@@ -6,7 +6,6 @@
  */
 
 #include <linux/key.h>
-#include <linux/spinlock.h>
 
 #include "fscrypt_private.h"
 

@@ -25,7 +25,6 @@
 #include <linux/completion.h>
 #include <linux/file.h>
 #include <linux/magic.h>
-#include <linux/spinlock.h>
 
 /* This is the range of ioctl() numbers we claim as ours */
 #define AUTOFS_IOC_FIRST     AUTOFS_IOC_READY

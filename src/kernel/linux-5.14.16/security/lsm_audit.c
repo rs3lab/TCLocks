@@ -37,8 +37,8 @@
  *
  * return  0 on success
  */
-int ipv4_skb_to_auditdata(struct sk_buff *skb, struct common_audit_data *ad,
-			  u8 *proto)
+int ipv4_skb_to_auditdata(struct sk_buff *skb,
+		struct common_audit_data *ad, u8 *proto)
 {
 	int ret = 0;
 	struct iphdr *ih;
@@ -106,8 +106,8 @@ int ipv4_skb_to_auditdata(struct sk_buff *skb, struct common_audit_data *ad,
  *
  * return  0 on success
  */
-int ipv6_skb_to_auditdata(struct sk_buff *skb, struct common_audit_data *ad,
-			  u8 *proto)
+int ipv6_skb_to_auditdata(struct sk_buff *skb,
+		struct common_audit_data *ad, u8 *proto)
 {
 	int offset, ret = 0;
 	struct ipv6hdr *ip6;
@@ -180,6 +180,7 @@ int ipv6_skb_to_auditdata(struct sk_buff *skb, struct common_audit_data *ad,
 }
 #endif
 
+
 static inline void print_ipv6_addr(struct audit_buffer *ab,
 				   const struct in6_addr *addr, __be16 port,
 				   char *name1, char *name2)
@@ -214,11 +215,10 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 	 * start making this union too large!  See struct lsm_network_audit
 	 * as an example of how to deal with large data.
 	 */
-	BUILD_BUG_ON(sizeof(a->u) > sizeof(void *) * 2);
+	BUILD_BUG_ON(sizeof(a->u) > sizeof(void *)*2);
 
 	audit_log_format(ab, " pid=%d comm=", task_tgid_nr(current));
-	audit_log_untrustedstring(ab,
-				  memcpy(comm, current->comm, sizeof(comm)));
+	audit_log_untrustedstring(ab, memcpy(comm, current->comm, sizeof(comm)));
 
 	switch (a->type) {
 	case LSM_AUDIT_DATA_NONE:
@@ -312,9 +312,8 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 			if (pid) {
 				char comm[sizeof(tsk->comm)];
 				audit_log_format(ab, " opid=%d ocomm=", pid);
-				audit_log_untrustedstring(
-					ab,
-					memcpy(comm, tsk->comm, sizeof(comm)));
+				audit_log_untrustedstring(ab,
+				    memcpy(comm, tsk->comm, sizeof(comm)));
 			}
 		}
 		break;
@@ -332,11 +331,11 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 				struct inet_sock *inet = inet_sk(sk);
 
 				print_ipv4_addr(ab, inet->inet_rcv_saddr,
-						inet->inet_sport, "laddr",
-						"lport");
+						inet->inet_sport,
+						"laddr", "lport");
 				print_ipv4_addr(ab, inet->inet_daddr,
-						inet->inet_dport, "faddr",
-						"fport");
+						inet->inet_dport,
+						"faddr", "fport");
 				break;
 			}
 #if IS_ENABLED(CONFIG_IPV6)
@@ -344,11 +343,11 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 				struct inet_sock *inet = inet_sk(sk);
 
 				print_ipv6_addr(ab, &sk->sk_v6_rcv_saddr,
-						inet->inet_sport, "laddr",
-						"lport");
+						inet->inet_sport,
+						"laddr", "lport");
 				print_ipv6_addr(ab, &sk->sk_v6_daddr,
-						inet->inet_dport, "faddr",
-						"fport");
+						inet->inet_dport,
+						"faddr", "fport");
 				break;
 			}
 #endif
@@ -358,11 +357,10 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 				if (!addr)
 					break;
 				if (u->path.dentry) {
-					audit_log_d_path(ab,
-							 " path=", &u->path);
+					audit_log_d_path(ab, " path=", &u->path);
 					break;
 				}
-				len = addr->len - sizeof(short);
+				len = addr->len-sizeof(short);
 				p = &addr->name->sun_path[0];
 				audit_log_format(ab, " path=");
 				if (*p)
@@ -376,15 +374,19 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 		switch (a->u.net->family) {
 		case AF_INET:
 			print_ipv4_addr(ab, a->u.net->v4info.saddr,
-					a->u.net->sport, "saddr", "src");
+					a->u.net->sport,
+					"saddr", "src");
 			print_ipv4_addr(ab, a->u.net->v4info.daddr,
-					a->u.net->dport, "daddr", "dest");
+					a->u.net->dport,
+					"daddr", "dest");
 			break;
 		case AF_INET6:
 			print_ipv6_addr(ab, &a->u.net->v6info.saddr,
-					a->u.net->sport, "saddr", "src");
+					a->u.net->sport,
+					"saddr", "src");
 			print_ipv6_addr(ab, &a->u.net->v6info.daddr,
-					a->u.net->dport, "daddr", "dest");
+					a->u.net->dport,
+					"daddr", "dest");
 			break;
 		}
 		if (a->u.net->netif > 0) {
@@ -414,7 +416,8 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 	case LSM_AUDIT_DATA_IBPKEY: {
 		struct in6_addr sbn_pfx;
 
-		memset(&sbn_pfx.s6_addr, 0, sizeof(sbn_pfx.s6_addr));
+		memset(&sbn_pfx.s6_addr, 0,
+		       sizeof(sbn_pfx.s6_addr));
 		memcpy(&sbn_pfx.s6_addr, &a->u.ibpkey->subnet_prefix,
 		       sizeof(a->u.ibpkey->subnet_prefix));
 		audit_log_format(ab, " pkey=0x%x subnet_prefix=%pI6c",
@@ -443,8 +446,8 @@ static void dump_common_audit_data(struct audit_buffer *ab,
  * uses callback to print LSM specific information
  */
 void common_lsm_audit(struct common_audit_data *a,
-		      void (*pre_audit)(struct audit_buffer *, void *),
-		      void (*post_audit)(struct audit_buffer *, void *))
+	void (*pre_audit)(struct audit_buffer *, void *),
+	void (*post_audit)(struct audit_buffer *, void *))
 {
 	struct audit_buffer *ab;
 

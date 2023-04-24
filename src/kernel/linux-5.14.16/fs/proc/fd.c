@@ -11,7 +11,7 @@
 #include <linux/file.h>
 #include <linux/seq_file.h>
 #include <linux/fs.h>
-#include <linux/spinlock.h>
+
 #include <linux/proc_fs.h>
 
 #include "../mount.h"
@@ -90,10 +90,10 @@ static int seq_fdinfo_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations proc_fdinfo_file_operations = {
-	.open = seq_fdinfo_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+	.open		= seq_fdinfo_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
 };
 
 static bool tid_fd_mode(struct task_struct *task, unsigned fd, fmode_t *mode)
@@ -150,8 +150,8 @@ static int tid_fd_revalidate(struct dentry *dentry, unsigned int flags)
 }
 
 static const struct dentry_operations tid_fd_dentry_operations = {
-	.d_revalidate = tid_fd_revalidate,
-	.d_delete = pid_delete_dentry,
+	.d_revalidate	= tid_fd_revalidate,
+	.d_delete	= pid_delete_dentry,
 };
 
 static int proc_fd_link(struct dentry *dentry, struct path *path)
@@ -183,8 +183,7 @@ struct fd_data {
 };
 
 static struct dentry *proc_fd_instantiate(struct dentry *dentry,
-					  struct task_struct *task,
-					  const void *ptr)
+	struct task_struct *task, const void *ptr)
 {
 	const struct fd_data *data = ptr;
 	struct proc_inode *ei;
@@ -212,7 +211,7 @@ static struct dentry *proc_lookupfd_common(struct inode *dir,
 					   instantiate_t instantiate)
 {
 	struct task_struct *task = get_proc_task(dir);
-	struct fd_data data = { .fd = name_to_int(&dentry->d_name) };
+	struct fd_data data = {.fd = name_to_int(&dentry->d_name)};
 	struct dentry *result = ERR_PTR(-ENOENT);
 
 	if (!task)
@@ -257,7 +256,8 @@ static int proc_readfd_common(struct file *file, struct dir_context *ctx,
 		data.fd = fd;
 
 		len = snprintf(name, sizeof(name), "%u", fd);
-		if (!proc_fill_cache(file, ctx, name, len, instantiate, p,
+		if (!proc_fill_cache(file, ctx,
+				     name, len, instantiate, p,
 				     &data))
 			goto out;
 		cond_resched();
@@ -275,9 +275,9 @@ static int proc_readfd(struct file *file, struct dir_context *ctx)
 }
 
 const struct file_operations proc_fd_operations = {
-	.read = generic_read_dir,
-	.iterate_shared = proc_readfd,
-	.llseek = generic_file_llseek,
+	.read		= generic_read_dir,
+	.iterate_shared	= proc_readfd,
+	.llseek		= generic_file_llseek,
 };
 
 static struct dentry *proc_lookupfd(struct inode *dir, struct dentry *dentry,
@@ -290,8 +290,8 @@ static struct dentry *proc_lookupfd(struct inode *dir, struct dentry *dentry,
  * /proc/pid/fd needs a special permission handler so that a process can still
  * access /proc/self/fd after it has executed a setuid().
  */
-int proc_fd_permission(struct user_namespace *mnt_userns, struct inode *inode,
-		       int mask)
+int proc_fd_permission(struct user_namespace *mnt_userns,
+		       struct inode *inode, int mask)
 {
 	struct task_struct *p;
 	int rv;
@@ -310,14 +310,13 @@ int proc_fd_permission(struct user_namespace *mnt_userns, struct inode *inode,
 }
 
 const struct inode_operations proc_fd_inode_operations = {
-	.lookup = proc_lookupfd,
-	.permission = proc_fd_permission,
-	.setattr = proc_setattr,
+	.lookup		= proc_lookupfd,
+	.permission	= proc_fd_permission,
+	.setattr	= proc_setattr,
 };
 
 static struct dentry *proc_fdinfo_instantiate(struct dentry *dentry,
-					      struct task_struct *task,
-					      const void *ptr)
+	struct task_struct *task, const void *ptr)
 {
 	const struct fd_data *data = ptr;
 	struct proc_inode *ei;
@@ -345,16 +344,17 @@ proc_lookupfdinfo(struct inode *dir, struct dentry *dentry, unsigned int flags)
 
 static int proc_readfdinfo(struct file *file, struct dir_context *ctx)
 {
-	return proc_readfd_common(file, ctx, proc_fdinfo_instantiate);
+	return proc_readfd_common(file, ctx,
+				  proc_fdinfo_instantiate);
 }
 
 const struct inode_operations proc_fdinfo_inode_operations = {
-	.lookup = proc_lookupfdinfo,
-	.setattr = proc_setattr,
+	.lookup		= proc_lookupfdinfo,
+	.setattr	= proc_setattr,
 };
 
 const struct file_operations proc_fdinfo_operations = {
-	.read = generic_read_dir,
-	.iterate_shared = proc_readfdinfo,
-	.llseek = generic_file_llseek,
+	.read		= generic_read_dir,
+	.iterate_shared	= proc_readfdinfo,
+	.llseek		= generic_file_llseek,
 };

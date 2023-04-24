@@ -20,8 +20,10 @@
 #include <linux/hardirq.h>
 #include <linux/mutex.h>
 #include <linux/prefetch.h>
+#include <linux/topology.h>
 #include <asm/byteorder.h>
 #include <asm/qspinlock.h>
+#include <linux/random.h>
 
 /*
  * Include queued spinlock statistics code
@@ -69,23 +71,6 @@
 #define MAX_NODES	4
 
 /*
- * On 64-bit architectures, the mcs_spinlock structure will be 16 bytes in
- * size and four of them will fit nicely in one 64-byte cacheline. For
- * pvqspinlock, however, we need more space for extra data. To accommodate
- * that, we insert two more long words to pad it up to 32 bytes. IOW, only
- * two of them can fit in a cacheline in this case. That is OK as it is rare
- * to have more than 2 levels of slowpath nesting in actual use. We don't
- * want to penalize pvqspinlocks to optimize for a rare case in native
- * qspinlocks.
- */
-struct qnode {
-	struct mcs_spinlock mcs;
-#ifdef CONFIG_PARAVIRT_SPINLOCKS
-	long reserved[2];
-#endif
-};
-
-/*
  * The pending bit spinning loop count.
  * This heuristic is used to limit the number of lockword accesses
  * made by atomic_cond_read_relaxed when waiting for the lock to
@@ -105,13 +90,294 @@ struct qnode {
  *
  * PV doubles the storage and uses the second cacheline for PV state.
  */
-static DEFINE_PER_CPU_ALIGNED(struct qnode, qnodes[MAX_NODES]);
+static DEFINE_PER_CPU_ALIGNED(struct mcs_spinlock, mcs_nodes[MAX_NODES]);
+
+/* Per-CPU pseudo-random number seed */
+static DEFINE_PER_CPU(u32, seed);
+
+static inline void set_sleader(struct mcs_spinlock *node, struct mcs_spinlock *qend)
+{
+	smp_store_release(&node->sleader, 1);
+	if (qend != node)
+		smp_store_release(&node->last_visited, qend);
+}
+
+static inline void clear_sleader(struct mcs_spinlock *node)
+{
+	node->sleader = 0;
+}
+
+static inline void set_waitcount(struct mcs_spinlock *node, int count)
+{
+	smp_store_release(&node->wcount, count);
+}
+
+#define AQS_MAX_LOCK_COUNT      256
+#define _Q_LOCKED_PENDING_MASK (_Q_LOCKED_MASK | _Q_PENDING_MASK)
+
+/*
+ * xorshift function for generating pseudo-random numbers:
+ * https://en.wikipedia.org/wiki/Xorshift
+ */
+static inline u32 xor_random(void)
+{
+	u32 v;
+
+	v = this_cpu_read(seed);
+	if (v == 0)
+		get_random_bytes(&v, sizeof(u32));
+
+	v ^= v << 6;
+	v ^= v >> 21;
+	v ^= v << 7;
+	this_cpu_write(seed, v);
+
+	return v;
+}
+
+/*
+ * Return false with probability 1 / @range.
+ * @range must be a power of 2.
+ */
+#define INTRA_SOCKET_HANDOFF_PROB_ARG	0x10000
+
+static bool probably(void)
+{
+	u32 v;
+	return xor_random() & (INTRA_SOCKET_HANDOFF_PROB_ARG - 1);
+	v = this_cpu_read(seed);
+	if (v >= 2048) {
+		this_cpu_write(seed, 0);
+		return false;
+	}
+	this_cpu_inc(seed);
+	return true;
+}
+
+
+/*
+ * This function is responsible for aggregating waiters in a
+ * particular socket in one place up to a certain batch count.
+ * The invariant is that the shuffle leaders always start from
+ * the very next waiter and they are selected ahead in the queue,
+ * if required. Moreover, none of the waiters will be behind the
+ * shuffle leader, they are always ahead in the queue.
+ * Currently, only one shuffle leader is chosen.
+ * TODO: Another aggressive approach could be to use HOH locking
+ * for n shuffle leaders, in which n corresponds to the number
+ * of sockets.
+ */
+static void shuffle_waiters(struct qspinlock *lock, struct mcs_spinlock *node,
+			    int is_next_waiter)
+{
+	struct mcs_spinlock *curr, *prev, *next, *last, *sleader, *qend;
+	int nid;
+	int curr_locked_count;
+	int one_shuffle = false;
+
+	prev = smp_load_acquire(&node->last_visited);
+	if (!prev)
+		prev = node;
+	last = node;
+	curr = NULL;
+	next = NULL;
+	sleader = NULL;
+	qend = NULL;
+
+	nid = node->nid;
+	curr_locked_count = node->wcount;
+
+	barrier();
+
+	/*
+	 * If the wait count is 0, then increase node->wcount
+	 * to 1 to avoid coming it again.
+	 */
+	if (curr_locked_count == 0) {
+		set_waitcount(node, ++curr_locked_count);
+	}
+
+	/*
+         * Our constraint is that we will reset every shuffle
+         * leader and the new one will be selected at the end,
+         * if any.
+         *
+         * This one here is to avoid the confusion of having
+         * multiple shuffling leaders.
+         */
+	clear_sleader(node);
+
+	/*
+         * In case the curr_locked_count has crossed a
+         * threshold, which is certainly impossible in this
+         * design, then load the very next of the node and pass
+         * the shuffling responsibility to that @next.
+         */
+	/* if (curr_locked_count >= AQS_MAX_LOCK_COUNT) { */
+	if (!probably()) {
+		sleader = READ_ONCE(node->next);
+		goto out;
+	}
+
+
+	/*
+         * In this loop, we try to shuffle the wait queue at
+         * least once to allow waiters from the same socket to
+         * have no cache-line bouncing. This shuffling is
+         * associated in two aspects:
+         * 1) when both adjacent nodes belong to the same socket
+         * 2) when there is an actual shuffling that happens.
+         *
+         * Currently, the approach is very conservative. If we
+         * miss any of the elements while traversing, we return
+         * back.
+         *
+         * TODO: We can come up with some aggressive strategy to
+         * form long chains, which we are yet to explore
+         *
+         * The way the algorithm works is that it tries to have
+         * at least two pointers: pred and curr, in which
+         * curr = pred->next. If curr and pred are in the same
+         * socket, then no need to shuffle, just update pred to
+         * point to curr.
+         * If that is not the case, then try to find the curr
+         * whose node id is same as the @node's node id. On
+         * finding that, we also try to get the @next, which is
+         * next = curr->next; which we use all of them to
+         * shuffle them wrt @last.
+         * @last holds the latest shuffled element in the wait
+         * queue, which is updated on each shuffle and is most
+         * likely going to be next shuffle leader.
+         */
+	for (;;) {
+		/*
+		 * Get the curr first
+		 */
+		curr = READ_ONCE(prev->next);
+
+		/*
+                 * Now, right away we can quit the loop if curr
+                 * is NULL or is at the end of the wait queue
+                 * and choose @last as the sleader.
+                 */
+		if (!curr) {
+			sleader = last;
+			qend = prev;
+			break;
+		}
+
+	     recheck_curr_tail:
+                /*
+                 * If we are the last one in the tail, then
+                 * we cannot do anything, we should return back
+                 * while selecting the next sleader as the last one
+                 */
+		if (curr->cid == (atomic_read(&lock->val) >> _Q_TAIL_CPU_OFFSET)) {
+			sleader = last;
+			qend = prev;
+			break;
+		}
+
+		/* got the current for sure */
+
+		/* Check if curr->nid is same as nid */
+		if (curr->nid == nid) {
+
+			/*
+			 * if prev->nid == curr->nid, then
+			 * just update the last and prev
+			 * and proceed forward
+			 */
+			if (prev->nid == nid) {
+				set_waitcount(curr, curr_locked_count);
+
+				last = curr;
+				prev = curr;
+				one_shuffle = true;
+
+			} else {
+				/* prev->nid is not same, then we need
+				 * to find next and move @curr to
+				 * last->next, while linking @prev->next
+				 * to next.
+				 *
+				 * NOTE: We do not update @prev here
+				 * because @curr has been already moved
+				 * out.
+				 */
+				next = READ_ONCE(curr->next);
+				if (!next) {
+					sleader = last;
+					qend = prev;
+					/* qend = curr; */
+					break;
+				}
+
+				/*
+                                 * Since, we have curr and next,
+                                 * we mark the curr that it has been
+                                 * shuffled and shuffle the queue
+                                 */
+				set_waitcount(curr, curr_locked_count);
+
+/*
+ *                                                 (1)
+ *                                    (3)       ----------
+ *                          -------------------|--\      |
+ *                        /                    |   v     v
+ *   ----          ----   |  ----        ----/   ----   ----
+ *  | SL | -> ... |Last| -> | X  |....->|Prev|->|Curr|->|Next|->....
+ *   ----          ----  ->  ----        ----    ----  | ----
+ *                      /          (2)                /
+ *                      -----------------------------
+ *                              |
+ *                              V
+ *   ----          ----      ----      ----        ----    ----
+ *  | SL | -> ... |Last| -> |Curr| -> | X  |....->|Prev|->|Next|->....
+ *   ----          ----      ----      ----        ----    ----
+ *
+ */
+				prev->next = next;
+				curr->next = last->next;
+				last->next = curr;
+				smp_wmb();
+
+				last = curr;
+				curr = next;
+				one_shuffle = true;
+
+				goto recheck_curr_tail;
+			}
+		} else
+			prev = curr;
+
+		/*
+		 * Currently, we only exit once we have at least
+		 * one shuffler if the shuffling leader is the
+		 * very next lock waiter.
+		 * TODO: This approach can be further optimized.
+		 */
+		if (one_shuffle) {
+			if ((is_next_waiter &&
+			     !(atomic_read_acquire(&lock->val) & _Q_LOCKED_PENDING_MASK)) ||
+			    (!is_next_waiter && READ_ONCE(node->lstatus))) {
+				sleader = last;
+				qend = prev;
+				break;
+			}
+		}
+	}
+
+     out:
+	if (sleader) {
+		set_sleader(sleader, qend);
+	}
+}
 
 /*
  * We must be able to distinguish between no-tail and the tail at 0:0,
  * therefore increment the cpu number by one.
  */
-
 static inline __pure u32 encode_tail(int cpu, int idx)
 {
 	u32 tail;
@@ -127,16 +393,8 @@ static inline __pure struct mcs_spinlock *decode_tail(u32 tail)
 	int cpu = (tail >> _Q_TAIL_CPU_OFFSET) - 1;
 	int idx = (tail &  _Q_TAIL_IDX_MASK) >> _Q_TAIL_IDX_OFFSET;
 
-	return per_cpu_ptr(&qnodes[idx].mcs, cpu);
+	return per_cpu_ptr(&mcs_nodes[idx], cpu);
 }
-
-static inline __pure
-struct mcs_spinlock *grab_mcs_node(struct mcs_spinlock *base, int idx)
-{
-	return &((struct qnode *)base + idx)->mcs;
-}
-
-#define _Q_LOCKED_PENDING_MASK (_Q_LOCKED_MASK | _Q_PENDING_MASK)
 
 #if _Q_PENDING_BITS == 8
 /**
@@ -317,14 +575,15 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 	struct mcs_spinlock *prev, *next, *node;
 	u32 old, tail;
 	int idx;
+        int cid;
 
 	BUILD_BUG_ON(CONFIG_NR_CPUS >= (1U << _Q_TAIL_CPU_BITS));
 
-	if (pv_enabled())
-		goto pv_queue;
+	/* if (pv_enabled()) */
+	/* 	goto pv_queue; */
 
-	if (virt_spin_lock(lock))
-		return;
+	/* if (virt_spin_lock(lock)) */
+	/* 	return; */
 
 	/*
 	 * Wait for in-progress pending->locked hand-overs with a bounded
@@ -397,32 +656,12 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 queue:
 	lockevent_inc(lock_slowpath);
 pv_queue:
-	node = this_cpu_ptr(&qnodes[0].mcs);
+	node = this_cpu_ptr(&mcs_nodes[0]);
 	idx = node->count++;
-	tail = encode_tail(smp_processor_id(), idx);
+        cid = smp_processor_id();
+	tail = encode_tail(cid, idx);
 
-	/*
-	 * 4 nodes are allocated based on the assumption that there will
-	 * not be nested NMIs taking spinlocks. That may not be true in
-	 * some architectures even though the chance of needing more than
-	 * 4 nodes will still be extremely unlikely. When that happens,
-	 * we fall back to spinning on the lock directly without using
-	 * any MCS node. This is not the most elegant solution, but is
-	 * simple enough.
-	 */
-	if (unlikely(idx >= MAX_NODES)) {
-		lockevent_inc(lock_no_node);
-		while (!queued_spin_trylock(lock))
-			cpu_relax();
-		goto release;
-	}
-
-	node = grab_mcs_node(node, idx);
-
-	/*
-	 * Keep counts of non-zero index values:
-	 */
-	lockevent_cond_inc(lock_use_node2 + idx - 1, idx);
+	node += idx;
 
 	/*
 	 * Ensure that we increment the head node->count before initialising
@@ -431,6 +670,9 @@ pv_queue:
 	 */
 	barrier();
 
+        node->cid = cid + 1;
+        node->nid = numa_node_id();
+        node->last_visited = NULL;
 	node->locked = 0;
 	node->next = NULL;
 	pv_init_node(node);
@@ -471,7 +713,18 @@ pv_queue:
 		WRITE_ONCE(prev->next, node);
 
 		pv_wait_node(node, prev);
-		arch_mcs_spin_lock_contended(&node->locked);
+		/* arch_mcs_spin_lock_contended(&node->locked); */
+		for (;;) {
+			int __val = READ_ONCE(node->lstatus);
+			if (__val)
+				break;
+
+			if (READ_ONCE(node->sleader))
+				shuffle_waiters(lock, node, false);
+
+			cpu_relax();
+		}
+		smp_acquire__after_ctrl_dep();
 
 		/*
 		 * While waiting for the MCS lock, the next pointer may have
@@ -479,9 +732,9 @@ pv_queue:
 		 * the next pointer & prefetch the cacheline for writing
 		 * to reduce latency in the upcoming MCS unlock operation.
 		 */
-		next = READ_ONCE(node->next);
-		if (next)
-			prefetchw(next);
+		/* next = READ_ONCE(node->next); */
+		/* if (next) */
+		/* 	prefetchw(next); */
 	}
 
 	/*
@@ -505,10 +758,24 @@ pv_queue:
 	 * If PV isn't active, 0 will be returned instead.
 	 *
 	 */
-	if ((val = pv_wait_head_or_lock(lock, node)))
-		goto locked;
+	/* if ((val = pv_wait_head_or_lock(lock, node))) */
+	/* 	goto locked; */
 
-	val = atomic_cond_read_acquire(&lock->val, !(VAL & _Q_LOCKED_PENDING_MASK));
+	/* val = atomic_cond_read_acquire(&lock->val, !(VAL & _Q_LOCKED_PENDING_MASK)); */
+	for (;;) {
+		int wcount;
+
+		val = atomic_read(&lock->val);
+		if (!(val & _Q_LOCKED_PENDING_MASK))
+			break;
+
+		wcount = READ_ONCE(node->wcount);
+		if (!wcount ||
+		    (wcount && node->sleader))
+			shuffle_waiters(lock, node, true);
+		cpu_relax();
+	}
+	smp_acquire__after_ctrl_dep();
 
 locked:
 	/*
@@ -547,17 +814,19 @@ locked:
 	/*
 	 * contended path; wait for next if not observed yet, release.
 	 */
+        next = READ_ONCE(node->next);
 	if (!next)
 		next = smp_cond_load_relaxed(&node->next, (VAL));
 
-	arch_mcs_spin_unlock_contended(&next->locked);
+	/* arch_mcs_spin_unlock_contended(&next->locked); */
+        smp_store_release(&next->lstatus, 1);
 	pv_kick_node(lock, next);
 
 release:
 	/*
 	 * release the node
 	 */
-	__this_cpu_dec(qnodes[0].mcs.count);
+	__this_cpu_dec(mcs_nodes[0].count);
 }
 EXPORT_SYMBOL(queued_spin_lock_slowpath);
 

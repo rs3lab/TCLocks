@@ -1404,7 +1404,6 @@ struct task_struct {
 	void *komb_stack_curr_ptr;
 	void *komb_stack_base_ptr;
 	void *komb_mutex_node;
-	void *aqm_node;
 	void *komb_local_queue_head;
 	void *komb_local_queue_tail;
 	void *komb_curr_waiter_task;

@@ -17,7 +17,6 @@
 #include <linux/xattr.h>
 #include <linux/iversion.h>
 #include <linux/posix_acl.h>
-#include <linux/spinlock.h>
 
 static void fuse_advise_use_readdirplus(struct inode *dir)
 {

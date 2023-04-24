@@ -9,7 +9,6 @@
 #define _LINUX_RWSEM_H
 
 #include <linux/linkage.h>
-#include <linux/aqm.h>
 
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -17,44 +16,56 @@
 #include <linux/spinlock.h>
 #include <linux/atomic.h>
 #include <linux/err.h>
-#include <linux/mutex.h>
 
-//#define BRAVO 1
+struct rw_semaphore;
 
-/*
- * Writer states & reader shift and bias.
- */
-#define _KOMB_RWSEM_W_LOCKED 0xff /* A writer holds the lock */
-#define _KOMB_RWSEM_W_COMBINER 0x70 /* A combiner holds the lock */
-#define _KOMB_RWSEM_W_OOO 0x7f /* A combiner holds the lock */
-#define _KOMB_RWSEM_W_WMASK 0x1ff /* Writer mask		   */
-#define _KOMB_RWSEM_W_WAITING 0x100 /* Writer waiting */
-#define _KOMB_RWSEM_R_SHIFT 9 /* Reader count shift	   */
-#define _KOMB_RWSEM_R_BIAS (1U << _KOMB_RWSEM_R_SHIFT)
+struct rwaqm_node {
+	struct rwaqm_node *next;
 
-#define _Q_COMPLETED_OFFSET (_Q_LOCKED_OFFSET + _Q_LOCKED_BITS)
-#define _Q_COMPLETED_BITS 8
-#define _Q_COMPLETED_MASK _Q_SET_MASK(COMPLETED)
+	union {
+		unsigned int locked;
+		struct {
+			u8  lstatus;
+			u8  sleader;
+			u16 wcount;
+		};
+	};
 
-#define NUM_SLOT (1024)
-#define TABLE_SIZE ((NUM_SLOT))
-#define V(i) ((i))
+	int nid;
+        struct task_struct *task;
+	struct rwaqm_node *last_visited;
+	int type;
+	int lock_status;
+} ____cacheline_aligned;
 
-#define CHECK_FOR_BIAS 16
-#define MULTIPLIER 9
+struct rwmutex {
+	struct rwaqm_node *tail;
+	union {
+		atomic_t val;
+#ifdef __LITTLE_ENDIAN
+		struct {
+			u8 locked;
+			u8 no_stealing;
+			u8 rtype_cur;
+			u8 rtype_new;
+		};
+		struct {
+			u8 locked_no_stealing;
+		};
+#else
+		struct {
+			u8  __unused[2];
+			u8  no_stealing;
+			u8  locked;
+		};
+		struct {
+			u16 __unused2;
+			u16 locked_no_stealing;
+		};
+#endif
+	};
+};
 
-/*
- * For an uncontended rwsem, count and owner are the only fields a task
- * needs to touch when acquiring the rwsem. So they are put next to each
- * other to increase the chance that they will share the same cacheline.
- *
- * In a contended rwsem, the owner is likely the most frequently accessed
- * field in the structure as the optimistic waiter that holds the osq lock
- * will spin on owner. For an embedded rwsem, other hot fields in the
- * containing structure should be moved further away from the rwsem to
- * reduce the chance that they will share the same cacheline causing
- * cacheline bouncing problem.
- */
 struct rw_semaphore {
 	union {
 		atomic_long_t cnts;
@@ -63,19 +74,60 @@ struct rw_semaphore {
 			u8 rcount[7];
 		};
 	};
-	char dummy1[128];
-	char dummy2[128];
-	struct aqm_mutex reader_wait_lock;
-	char dummy3[128];
-	struct mutex_node *writer_tail;
-	char dummy4[128];
-	struct mutex_node *komb_waiter_rsp_ptr;
-	struct mutex_node *komb_waiter_node;
-#ifdef BRAVO
-	int rbias;
-	u64 inhibit_until;
+	struct rwmutex wait_lock;
+#ifdef USE_GLOBAL_RDTABLE
+	uint64_t *skt_readers;
+	uint64_t *cpu_readers;
 #endif
 };
+
+#define RWAQM_UNLOCKED_VALUE 	0x00000000L
+#define	RWAQM_W_WAITING	        0x100		/* A writer is waiting	   */
+#define	RWAQM_W_LOCKED	        0x0bf		/* A writer holds the lock */
+#define	RWAQM_W_WMASK	        0x1bf		/* Writer mask		   */
+#define	RWAQM_R_SHIFT	        9		/* Reader count shift	   */
+#define RWAQM_R_BIAS	        (1U << RWAQM_R_SHIFT)
+
+#define RWAQM_R_CNTR_CTR 0x1         /* Reader is centralized */
+#define RWAQM_R_NUMA_CTR 0x2 		/* Reader is per-socket */
+#define RWAQM_R_PCPU_CTR 0x4 		/* Reader is per-core */
+#define RWAQM_R_WRON_CTR 0x8 		/* All readers behave as writers */
+
+#define RWAQM_DCTR(v)        (((v) << 8) | (v))
+#define RWAQM_R_CNTR_DCTR    RWAQM_DCTR(RWAQM_R_CNTR_CTR)
+#define RWAQM_R_NUMA_DCTR    RWAQM_DCTR(RWAQM_R_NUMA_CTR)
+#define RWAQM_R_PCPU_DCTR    RWAQM_DCTR(RWAQM_R_PCPU_CTR)
+#define RWAQM_R_WRON_DCTR    RWAQM_DCTR(RWAQM_R_WRON_CTR)
+
+
+#define __RWMUTEX_INITIALIZER(lockname) 			\
+	{ .val = ATOMIC_INIT(0) 				\
+	, .tail = NULL }
+
+#define DEFINE_RWMUTEX(rwmutexname) \
+	struct rwmutex rwmutexname = __RWMUTEX_INITIALIZER(rwmutexname)
+
+
+#ifdef USE_GLOBAL_RDTABLE
+#define __INIT_TABLE(name) , .skt_readers = NULL, .cpu_readers = NULL
+#else
+#define __INIT_TABLE(name)
+#endif
+
+#ifdef SEPARATE_PARKING_LIST
+#define __INIT_SEPARATE_PLIST(name) 				\
+	, .wait_slock = __RAW_SPIN_LOCK_UNLOCKED(name.wait_slock) \
+	, .next = NULL
+#else
+#define __INIT_SEPARATE_PLIST(name)
+#endif
+
+#define __RWAQM_INIT_COUNT(name)  				\
+	.cnts = ATOMIC_LONG_INIT(RWAQM_UNLOCKED_VALUE)
+
+
+/* Include the arch specific part */
+/* #include <asm/rwsem.h> */
 
 /* In all implementations count != 0 means locked */
 static inline int rwsem_is_locked(struct rw_semaphore *sem)
@@ -83,36 +135,51 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 	return atomic_long_read(&sem->cnts) != 0;
 }
 
-#define RWSEM_UNLOCKED_VALUE 0L
+#define RWSEM_UNLOCKED_VALUE		0L
+#define __RWSEM_COUNT_INIT(name)	.count = ATOMIC_LONG_INIT(RWSEM_UNLOCKED_VALUE)
 
 /* Common initializer macros and functions */
 
-#define __RWSEM_DEP_MAP_INIT(lockname)
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+# define __RWSEM_DEP_MAP_INIT(lockname)			\
+	.dep_map = {					\
+		.name = #lockname,			\
+		.wait_type_inner = LD_WAIT_SLEEP,	\
+	},
+#else
+# define __RWSEM_DEP_MAP_INIT(lockname)
+#endif
 
-#define __RWSEM_DEBUG_INIT(lockname)
+#ifdef CONFIG_DEBUG_RWSEMS
+# define __RWSEM_DEBUG_INIT(lockname) .magic = &lockname,
+#else
+# define __RWSEM_DEBUG_INIT(lockname)
+#endif
 
+#ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+#define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = NULL
+#else
 #define __RWSEM_OPT_INIT(lockname)
+#endif
 
-#define __RWSEM_INITIALIZER(lockname)                                          \
-	{                                                                      \
-		.cnts = ATOMIC_LONG_INIT(0),                                   \
-		.reader_wait_lock.val = ATOMIC_INIT(0),                        \
-		.reader_wait_lock.tail = NULL, .writer_tail = NULL             \
-	}
+#define __RWSEM_INITIALIZER(name)				\
+	{ __RWAQM_INIT_COUNT(name)  				\
+	, __RWMUTEX_INITIALIZER((name).wait_lock) 		\
+	  __INIT_TABLE((name)) 					\
+	  __INIT_SEPARATE_PLIST((name)) }
 
-#define DECLARE_RWSEM(name) struct rw_semaphore name = __RWSEM_INITIALIZER(name)
+#define DECLARE_RWSEM(name) \
+	struct rw_semaphore name = __RWSEM_INITIALIZER(name)
 
 extern void __init_rwsem(struct rw_semaphore *sem, const char *name,
 			 struct lock_class_key *key);
 
-#define init_rwsem(sem)                                                        \
-	do {                                                                   \
-		static struct lock_class_key __key;                            \
-                                                                               \
-		__init_rwsem((sem), #sem, &__key);                             \
-	} while (0)
-
-extern void komb_rwsem_init(void);
+#define init_rwsem(sem)						\
+do {								\
+	static struct lock_class_key __key;			\
+								\
+	__init_rwsem((sem), #sem, &__key);			\
+} while (0)
 
 /*
  * This is the same regardless of which rwsem implementation that is being used.
@@ -122,7 +189,7 @@ extern void komb_rwsem_init(void);
  */
 static inline int rwsem_is_contended(struct rw_semaphore *sem)
 {
-	return (sem->writer_tail != NULL);
+	return sem->wait_lock.tail != NULL;
 }
 
 /*
@@ -163,12 +230,13 @@ extern void up_write(struct rw_semaphore *sem);
  */
 extern void downgrade_write(struct rw_semaphore *sem);
 
-#define down_read_nested(sem, subclass) down_read(sem)
-#define down_read_killable_nested(sem, subclass) down_read_killable(sem)
-#define down_write_nest_lock(sem, nest_lock) down_write(sem)
-#define down_write_nested(sem, subclass) down_write(sem)
-#define down_write_killable_nested(sem, subclass) down_write_killable(sem)
-#define down_read_non_owner(sem) down_read(sem)
-#define up_read_non_owner(sem) up_read(sem)
+
+# define down_read_nested(sem, subclass) down_read(sem)
+# define down_read_killable_nested(sem, subclass)	down_read_killable(sem)
+# define down_write_nest_lock(sem, nest_lock)	down_write(sem)
+# define down_write_nested(sem, subclass)	down_write(sem)
+# define down_write_killable_nested(sem, subclass)	down_write_killable(sem)
+# define down_read_non_owner(sem)		down_read(sem)
+# define up_read_non_owner(sem)			up_read(sem)
 
 #endif /* _LINUX_RWSEM_H */

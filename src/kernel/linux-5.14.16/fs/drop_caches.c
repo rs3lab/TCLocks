@@ -9,7 +9,6 @@
 #include <linux/writeback.h>
 #include <linux/sysctl.h>
 #include <linux/gfp.h>
-#include <linux/spinlock.h>
 #include "internal.h"
 
 /* A global variable is a bit ugly, but it keeps the code simple */
@@ -20,14 +19,14 @@ static void drop_pagecache_sb(struct super_block *sb, void *unused)
 	struct inode *inode, *toput_inode = NULL;
 
 	spin_lock(&sb->s_inode_list_lock);
-	list_for_each_entry (inode, &sb->s_inodes, i_sb_list) {
+	list_for_each_entry(inode, &sb->s_inodes, i_sb_list) {
 		spin_lock(&inode->i_lock);
 		/*
 		 * We must skip inodes in unusual state. We may also skip
 		 * inodes without pages but we deliberately won't in case
 		 * we need to reschedule to avoid softlockups.
 		 */
-		if ((inode->i_state & (I_FREEING | I_WILL_FREE | I_NEW)) ||
+		if ((inode->i_state & (I_FREEING|I_WILL_FREE|I_NEW)) ||
 		    (inode->i_mapping->nrpages == 0 && !need_resched())) {
 			spin_unlock(&inode->i_lock);
 			continue;
@@ -47,8 +46,8 @@ static void drop_pagecache_sb(struct super_block *sb, void *unused)
 	iput(toput_inode);
 }
 
-int drop_caches_sysctl_handler(struct ctl_table *table, int write, void *buffer,
-			       size_t *length, loff_t *ppos)
+int drop_caches_sysctl_handler(struct ctl_table *table, int write,
+		void *buffer, size_t *length, loff_t *ppos)
 {
 	int ret;
 
@@ -67,8 +66,9 @@ int drop_caches_sysctl_handler(struct ctl_table *table, int write, void *buffer,
 			count_vm_event(DROP_SLAB);
 		}
 		if (!stfu) {
-			pr_info("%s (%d): drop_caches: %d\n", current->comm,
-				task_pid_nr(current), sysctl_drop_caches);
+			pr_info("%s (%d): drop_caches: %d\n",
+				current->comm, task_pid_nr(current),
+				sysctl_drop_caches);
 		}
 		stfu |= sysctl_drop_caches & 4;
 	}

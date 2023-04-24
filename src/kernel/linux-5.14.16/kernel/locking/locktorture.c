@@ -543,7 +543,7 @@ static struct lock_torture_ops rtmutex_lock_ops = {
 #endif
 
 static DECLARE_RWSEM(torture_rwsem);
-static int torture_down_write(int tid __maybe_unused)
+static int torture_rwsem_down_write(int tid __maybe_unused)
 __acquires(torture_rwsem)
 {
 	down_write(&torture_rwsem);
@@ -564,13 +564,13 @@ static void torture_rwsem_write_delay(struct torture_random_state *trsp)
 		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
-static void torture_up_write(int tid __maybe_unused)
+static void torture_rwsem_up_write(int tid __maybe_unused)
 __releases(torture_rwsem)
 {
 	up_write(&torture_rwsem);
 }
 
-static int torture_down_read(int tid __maybe_unused)
+static int torture_rwsem_down_read(int tid __maybe_unused)
 __acquires(torture_rwsem)
 {
 	down_read(&torture_rwsem);
@@ -591,20 +591,20 @@ static void torture_rwsem_read_delay(struct torture_random_state *trsp)
 		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
-static void torture_up_read(int tid __maybe_unused)
+static void torture_rwsem_up_read(int tid __maybe_unused)
 __releases(torture_rwsem)
 {
 	up_read(&torture_rwsem);
 }
 
 static struct lock_torture_ops rwsem_lock_ops = {
-	.writelock	= torture_down_write,
+	.writelock	= torture_rwsem_down_write,
 	.write_delay	= torture_rwsem_write_delay,
 	.task_boost     = torture_boost_dummy,
-	.writeunlock	= torture_up_write,
-	.readlock       = torture_down_read,
+	.writeunlock	= torture_rwsem_up_write,
+	.readlock       = torture_rwsem_down_read,
 	.read_delay     = torture_rwsem_read_delay,
-	.readunlock     = torture_up_read,
+	.readunlock     = torture_rwsem_up_read,
 	.name		= "rwsem_lock"
 };
 
@@ -621,27 +621,27 @@ static void torture_percpu_rwsem_exit(void)
 	percpu_free_rwsem(&pcpu_rwsem);
 }
 
-static int torture_percpu_down_write(int tid __maybe_unused)
+static int torture_percpu_rwsem_down_write(int tid __maybe_unused)
 __acquires(pcpu_rwsem)
 {
 	percpu_down_write(&pcpu_rwsem);
 	return 0;
 }
 
-static void torture_percpu_up_write(int tid __maybe_unused)
+static void torture_percpu_rwsem_up_write(int tid __maybe_unused)
 __releases(pcpu_rwsem)
 {
 	percpu_up_write(&pcpu_rwsem);
 }
 
-static int torture_percpu_down_read(int tid __maybe_unused)
+static int torture_percpu_rwsem_down_read(int tid __maybe_unused)
 __acquires(pcpu_rwsem)
 {
 	percpu_down_read(&pcpu_rwsem);
 	return 0;
 }
 
-static void torture_percpu_up_read(int tid __maybe_unused)
+static void torture_percpu_rwsem_up_read(int tid __maybe_unused)
 __releases(pcpu_rwsem)
 {
 	percpu_up_read(&pcpu_rwsem);
@@ -650,13 +650,13 @@ __releases(pcpu_rwsem)
 static struct lock_torture_ops percpu_rwsem_lock_ops = {
 	.init		= torture_percpu_rwsem_init,
 	.exit		= torture_percpu_rwsem_exit,
-	.writelock	= torture_percpu_down_write,
+	.writelock	= torture_percpu_rwsem_down_write,
 	.write_delay	= torture_rwsem_write_delay,
 	.task_boost     = torture_boost_dummy,
-	.writeunlock	= torture_percpu_up_write,
-	.readlock       = torture_percpu_down_read,
+	.writeunlock	= torture_percpu_rwsem_up_write,
+	.readlock       = torture_percpu_rwsem_down_read,
 	.read_delay     = torture_rwsem_read_delay,
-	.readunlock     = torture_percpu_up_read,
+	.readunlock     = torture_percpu_rwsem_up_read,
 	.name		= "percpu_rwsem_lock"
 };
 
