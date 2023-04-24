@@ -148,7 +148,7 @@ class Runner(object):
         #pipe = sp.Popen(['/bin/bash', '-c', '%s && %s' %(source,dump)], stdout=sp.PIPE)
         #env = json.loads(pipe.stdout.read())
         #os.environ = env
-        self.ncores      = json.loads(os.environ['python_env_cores']) #[1,2,4,8,10,12,14,16,20,24,28,40,56,84,112,128,140,168,196,224]
+        self.ncores      = json.loads(os.environ['python_env_cores'])
         print(self.ncores)
         self.test_root   = os.path.normpath(
             os.path.join(CUR_DIR, self.ROOT_NAME))
@@ -173,14 +173,8 @@ class Runner(object):
         self.active_ncore = -1
 
     def log_start(self):
-        p = self.exec_cmd("uname -r", self.redirect)
-        osname=''
-        if self.redirect:
-            for l in p.stdout.readlines():
-                osname += l.decode("utf-8").strip()
-        print(osname)
         self.log_dir = os.path.normpath(
-            os.path.join(CUR_DIR, self.LOGD_NAME,"fxmark",osname))
+            os.path.join(CUR_DIR, self.LOGD_NAME,"fxmark",str(os.environ['kernel'])))
                  #        str(datetime.datetime.now()).replace(' ','-').replace(':','-')))
         self.log_path = os.path.normpath( os.path.join(self.log_dir, "fxmark.log"))
         self.exec_cmd("mkdir -p " + self.log_dir, self.dev_null)
