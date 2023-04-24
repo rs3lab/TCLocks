@@ -3,7 +3,7 @@ locks=(stock cna shfllock komb)
 
 for l in ${locks[@]}
 do
-	./run-komb-vm.sh ${l} &
+	./run-vm.sh ${l} &
 
 	sleep 60
 

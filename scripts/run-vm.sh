@@ -39,8 +39,8 @@ sudo qemu-system-x86_64 \
 	-numa node,nodeid=7,memdev=nr7,cpus=196-223 \
 	-smp cores=28,threads=1,sockets=8 \
 	-device e1000,netdev=net0 \
-	-qmp tcp:127.0.0.1:5556,server,nowait \
-	-netdev user,id=net0,hostfwd=tcp::4446-:22 -kernel ${KERNEL} \
+	-qmp tcp:127.0.0.1:5555,server,nowait \
+	-netdev user,id=net0,hostfwd=tcp::4444-:22 -kernel ${KERNEL} \
 	-append "root=/dev/sda1 console=ttyS0 nokaslr maxcpus=250 nr_cpus=250 possible_cpus=250 panic=1 numa_spinlock=on" \
 	-initrd komb-ramdisk.img \
 	-overcommit mem-lock=off \

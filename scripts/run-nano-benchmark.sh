@@ -1,5 +1,5 @@
 
-./run-komb-vm.sh stock &
+./run-vm.sh stock &
 
 sleep 60
 

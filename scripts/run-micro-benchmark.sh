@@ -6,7 +6,7 @@ for l in ${locks[@]}
 do
 	echo ${l}
 
-	./run-komb-vm.sh ${l} &
+	./run-vm.sh ${l} &
 	sleep 60
 	sudo ./pin-vcpu.py
 
