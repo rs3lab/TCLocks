@@ -3,7 +3,7 @@
 # and is generally not a function of system call inputs.
 KCOV_INSTRUMENT		:= n
 
-obj-y += mutex.o semaphore.o rwsem.o percpu-rwsem.o aqm.o
+obj-y += mutex.o semaphore.o rwsem.o percpu-rwsem.o
 
 # Avoid recursion lockdep -> KCSAN -> ... -> lockdep.
 KCSAN_SANITIZE_lockdep.o := n
@@ -23,7 +23,7 @@ endif
 obj-$(CONFIG_SMP) += spinlock.o
 obj-$(CONFIG_LOCK_SPIN_ON_OWNER) += osq_lock.o
 obj-$(CONFIG_PROVE_LOCKING) += spinlock.o
-obj-$(CONFIG_QUEUED_SPINLOCKS) += komb.o
+obj-$(CONFIG_QUEUED_SPINLOCKS) += qspinlock.o
 obj-$(CONFIG_RT_MUTEXES) += rtmutex.o
 obj-$(CONFIG_DEBUG_SPINLOCK) += spinlock.o
 obj-$(CONFIG_DEBUG_SPINLOCK) += spinlock_debug.o

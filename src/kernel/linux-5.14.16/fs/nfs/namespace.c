@@ -21,7 +21,7 @@
 #include "internal.h"
 #include "nfs.h"
 
-#define NFSDBG_FACILITY NFSDBG_VFS
+#define NFSDBG_FACILITY		NFSDBG_VFS
 
 static void nfs_expire_automounts(struct work_struct *work);
 
@@ -62,11 +62,11 @@ char *nfs_path(char **p, struct dentry *dentry_in, char *buffer,
 rename_retry:
 	buflen = buflen_in;
 	dentry = dentry_in;
-	end = buffer + buflen;
+	end = buffer+buflen;
 	*--end = '\0';
 	buflen--;
 
-	seq = komb_read_seqbegin(&rename_lock);
+	seq = read_seqbegin(&rename_lock);
 	rcu_read_lock();
 	while (1) {
 		spin_lock(&dentry->d_lock);
@@ -82,7 +82,7 @@ rename_retry:
 		spin_unlock(&dentry->d_lock);
 		dentry = dentry->d_parent;
 	}
-	if (komb_read_seqretry(&rename_lock, seq)) {
+	if (read_seqretry(&rename_lock, seq)) {
 		spin_unlock(&dentry->d_lock);
 		rcu_read_unlock();
 		goto rename_retry;
@@ -123,7 +123,7 @@ rename_retry:
 Elong_unlock:
 	spin_unlock(&dentry->d_lock);
 	rcu_read_unlock();
-	if (komb_read_seqretry(&rename_lock, seq))
+	if (read_seqretry(&rename_lock, seq))
 		goto rename_retry;
 Elong:
 	return ERR_PTR(-ENAMETOOLONG);
@@ -163,9 +163,9 @@ struct vfsmount *nfs_d_automount(struct path *path)
 		return ERR_CAST(fc);
 
 	ctx = nfs_fc2context(fc);
-	ctx->clone_data.dentry = path->dentry;
-	ctx->clone_data.sb = path->dentry->d_sb;
-	ctx->clone_data.fattr = nfs_alloc_fattr();
+	ctx->clone_data.dentry	= path->dentry;
+	ctx->clone_data.sb	= path->dentry->d_sb;
+	ctx->clone_data.fattr	= nfs_alloc_fattr();
 	if (!ctx->clone_data.fattr)
 		goto out_fc;
 
@@ -176,12 +176,12 @@ struct vfsmount *nfs_d_automount(struct path *path)
 
 	/* for submounts we want the same server; referrals will reassign */
 	memcpy(&ctx->nfs_server.address, &client->cl_addr, client->cl_addrlen);
-	ctx->nfs_server.addrlen = client->cl_addrlen;
-	ctx->nfs_server.port = server->port;
+	ctx->nfs_server.addrlen	= client->cl_addrlen;
+	ctx->nfs_server.port	= server->port;
 
-	ctx->version = client->rpc_ops->version;
-	ctx->minorversion = client->cl_minorversion;
-	ctx->nfs_mod = client->cl_nfs_mod;
+	ctx->version		= client->rpc_ops->version;
+	ctx->minorversion	= client->cl_minorversion;
+	ctx->nfs_mod		= client->cl_nfs_mod;
 	__module_get(ctx->nfs_mod->owner);
 
 	ret = client->rpc_ops->submount(fc, server);
@@ -207,9 +207,10 @@ out_fc:
 	return mnt;
 }
 
-static int nfs_namespace_getattr(struct user_namespace *mnt_userns,
-				 const struct path *path, struct kstat *stat,
-				 u32 request_mask, unsigned int query_flags)
+static int
+nfs_namespace_getattr(struct user_namespace *mnt_userns,
+		      const struct path *path, struct kstat *stat,
+		      u32 request_mask, unsigned int query_flags)
 {
 	if (NFS_FH(d_inode(path->dentry))->size != 0)
 		return nfs_getattr(mnt_userns, path, stat, request_mask,
@@ -218,8 +219,9 @@ static int nfs_namespace_getattr(struct user_namespace *mnt_userns,
 	return 0;
 }
 
-static int nfs_namespace_setattr(struct user_namespace *mnt_userns,
-				 struct dentry *dentry, struct iattr *attr)
+static int
+nfs_namespace_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+		      struct iattr *attr)
 {
 	if (NFS_FH(d_inode(dentry))->size != 0)
 		return nfs_setattr(mnt_userns, dentry, attr);
@@ -227,13 +229,13 @@ static int nfs_namespace_setattr(struct user_namespace *mnt_userns,
 }
 
 const struct inode_operations nfs_mountpoint_inode_operations = {
-	.getattr = nfs_getattr,
-	.setattr = nfs_setattr,
+	.getattr	= nfs_getattr,
+	.setattr	= nfs_setattr,
 };
 
 const struct inode_operations nfs_referral_inode_operations = {
-	.getattr = nfs_namespace_getattr,
-	.setattr = nfs_namespace_setattr,
+	.getattr	= nfs_namespace_getattr,
+	.setattr	= nfs_namespace_setattr,
 };
 
 static void nfs_expire_automounts(struct work_struct *work)
@@ -280,7 +282,7 @@ int nfs_do_submount(struct fs_context *fc)
 	if (!buffer)
 		return -ENOMEM;
 
-	ctx->internal = true;
+	ctx->internal		= true;
 	ctx->clone_data.inherited_bsize = ctx->clone_data.sb->s_blocksize_bits;
 
 	p = nfs_devname(dentry, buffer, 4096);
@@ -306,8 +308,8 @@ int nfs_submount(struct fs_context *fc, struct nfs_server *server)
 
 	/* Look it up again to get its attributes */
 	err = server->nfs_client->rpc_ops->lookup(d_inode(parent), dentry,
-						  ctx->mntfh,
-						  ctx->clone_data.fattr, NULL);
+						  ctx->mntfh, ctx->clone_data.fattr,
+						  NULL);
 	dput(parent);
 	if (err != 0)
 		return err;
@@ -336,7 +338,7 @@ static int param_set_nfs_timeout(const char *val, const struct kernel_param *kp)
 		if (!list_empty(&nfs_automount_list))
 			mod_delayed_work(system_wq, &nfs_automount_task, num);
 	} else {
-		*((int *)kp->arg) = -1 * HZ;
+		*((int *)kp->arg) = -1*HZ;
 		cancel_delayed_work(&nfs_automount_task);
 	}
 	return 0;
@@ -364,5 +366,5 @@ static const struct kernel_param_ops param_ops_nfs_timeout = {
 
 module_param(nfs_mountpoint_expiry_timeout, nfs_timeout, 0644);
 MODULE_PARM_DESC(nfs_mountpoint_expiry_timeout,
-		 "Set the NFS automounted mountpoint timeout value (seconds)."
-		 "Values <= 0 turn expiration off.");
+		"Set the NFS automounted mountpoint timeout value (seconds)."
+		"Values <= 0 turn expiration off.");

@@ -19,8 +19,6 @@
 #include <linux/nfs_fs.h>
 #include <linux/nfs_xdr.h>
 
-#include <linux/spinlock.h>
-
 #include "nfs4_fs.h"
 #include "nfs4session.h"
 #include "delegation.h"
@@ -49,8 +47,7 @@ static void nfs_mark_delegation_revoked(struct nfs_delegation *delegation)
 	}
 }
 
-static struct nfs_delegation *
-nfs_get_delegation(struct nfs_delegation *delegation)
+static struct nfs_delegation *nfs_get_delegation(struct nfs_delegation *delegation)
 {
 	refcount_inc(&delegation->refcount);
 	return delegation;
@@ -85,8 +82,9 @@ static void nfs_mark_return_delegation(struct nfs_server *server,
 	set_bit(NFS4CLNT_DELEGRETURN, &server->nfs_client->cl_state);
 }
 
-static bool nfs4_is_valid_delegation(const struct nfs_delegation *delegation,
-				     fmode_t flags)
+static bool
+nfs4_is_valid_delegation(const struct nfs_delegation *delegation,
+		fmode_t flags)
 {
 	if (delegation != NULL && (delegation->type & flags) == flags &&
 	    !test_bit(NFS_DELEGATION_REVOKED, &delegation->flags) &&
@@ -105,13 +103,13 @@ struct nfs_delegation *nfs4_get_valid_delegation(const struct inode *inode)
 	return NULL;
 }
 
-static int nfs4_do_check_delegation(struct inode *inode, fmode_t flags,
-				    bool mark)
+static int
+nfs4_do_check_delegation(struct inode *inode, fmode_t flags, bool mark)
 {
 	struct nfs_delegation *delegation;
 	int ret = 0;
 
-	flags &= FMODE_READ | FMODE_WRITE;
+	flags &= FMODE_READ|FMODE_WRITE;
 	rcu_read_lock();
 	delegation = rcu_dereference(NFS_I(inode)->delegation);
 	if (nfs4_is_valid_delegation(delegation, flags)) {
@@ -144,8 +142,7 @@ int nfs4_check_delegation(struct inode *inode, fmode_t flags)
 	return nfs4_do_check_delegation(inode, flags, false);
 }
 
-static int nfs_delegation_claim_locks(struct nfs4_state *state,
-				      const nfs4_stateid *stateid)
+static int nfs_delegation_claim_locks(struct nfs4_state *state, const nfs4_stateid *stateid)
 {
 	struct inode *inode = state->inode;
 	struct file_lock *fl;
@@ -159,7 +156,7 @@ static int nfs_delegation_claim_locks(struct nfs4_state *state,
 	list = &flctx->flc_posix;
 	spin_lock(&flctx->flc_lock);
 restart:
-	list_for_each_entry (fl, list, fl_list) {
+	list_for_each_entry(fl, list, fl_list) {
 		if (nfs_file_open_context(fl->fl_file)->state != state)
 			continue;
 		spin_unlock(&flctx->flc_lock);
@@ -178,7 +175,7 @@ out:
 }
 
 static int nfs_delegation_claim_opens(struct inode *inode,
-				      const nfs4_stateid *stateid, fmode_t type)
+		const nfs4_stateid *stateid, fmode_t type)
 {
 	struct nfs_inode *nfsi = NFS_I(inode);
 	struct nfs_open_context *ctx;
@@ -189,7 +186,7 @@ static int nfs_delegation_claim_opens(struct inode *inode,
 
 again:
 	rcu_read_lock();
-	list_for_each_entry_rcu (ctx, &nfsi->open_files, list) {
+	list_for_each_entry_rcu(ctx, &nfsi->open_files, list) {
 		state = ctx->state;
 		if (state == NULL)
 			continue;
@@ -231,7 +228,8 @@ again:
  *
  */
 void nfs_inode_reclaim_delegation(struct inode *inode, const struct cred *cred,
-				  fmode_t type, const nfs4_stateid *stateid,
+				  fmode_t type,
+				  const nfs4_stateid *stateid,
 				  unsigned long pagemod_limit)
 {
 	struct nfs_delegation *delegation;
@@ -262,9 +260,7 @@ void nfs_inode_reclaim_delegation(struct inode *inode, const struct cred *cred,
 	nfs_inode_set_delegation(inode, cred, type, stateid, pagemod_limit);
 }
 
-static int nfs_do_return_delegation(struct inode *inode,
-				    struct nfs_delegation *delegation,
-				    int issync)
+static int nfs_do_return_delegation(struct inode *inode, struct nfs_delegation *delegation, int issync)
 {
 	const struct cred *cred;
 	int res = 0;
@@ -273,15 +269,15 @@ static int nfs_do_return_delegation(struct inode *inode,
 		spin_lock(&delegation->lock);
 		cred = get_cred(delegation->cred);
 		spin_unlock(&delegation->lock);
-		res = nfs4_proc_delegreturn(inode, cred, &delegation->stateid,
-					    issync);
+		res = nfs4_proc_delegreturn(inode, cred,
+				&delegation->stateid,
+				issync);
 		put_cred(cred);
 	}
 	return res;
 }
 
-static struct inode *
-nfs_delegation_grab_inode(struct nfs_delegation *delegation)
+static struct inode *nfs_delegation_grab_inode(struct nfs_delegation *delegation)
 {
 	struct inode *inode = NULL;
 
@@ -329,6 +325,7 @@ nfs_start_delegation_return(struct nfs_inode *nfsi)
 static void nfs_abort_delegation_return(struct nfs_delegation *delegation,
 					struct nfs_client *clp, int err)
 {
+
 	spin_lock(&delegation->lock);
 	clear_bit(NFS_DELEGATION_RETURNING, &delegation->flags);
 	if (err == -EAGAIN) {
@@ -340,11 +337,12 @@ static void nfs_abort_delegation_return(struct nfs_delegation *delegation,
 
 static struct nfs_delegation *
 nfs_detach_delegation_locked(struct nfs_inode *nfsi,
-			     struct nfs_delegation *delegation,
-			     struct nfs_client *clp)
+		struct nfs_delegation *delegation,
+		struct nfs_client *clp)
 {
-	struct nfs_delegation *deleg_cur = rcu_dereference_protected(
-		nfsi->delegation, lockdep_is_held(&clp->cl_lock));
+	struct nfs_delegation *deleg_cur =
+		rcu_dereference_protected(nfsi->delegation,
+				lockdep_is_held(&clp->cl_lock));
 
 	if (deleg_cur == NULL || delegation != deleg_cur)
 		return NULL;
@@ -361,9 +359,9 @@ nfs_detach_delegation_locked(struct nfs_inode *nfsi,
 	return delegation;
 }
 
-static struct nfs_delegation *
-nfs_detach_delegation(struct nfs_inode *nfsi, struct nfs_delegation *delegation,
-		      struct nfs_server *server)
+static struct nfs_delegation *nfs_detach_delegation(struct nfs_inode *nfsi,
+		struct nfs_delegation *delegation,
+		struct nfs_server *server)
 {
 	struct nfs_client *clp = server->nfs_client;
 
@@ -373,7 +371,8 @@ nfs_detach_delegation(struct nfs_inode *nfsi, struct nfs_delegation *delegation,
 	return delegation;
 }
 
-static struct nfs_delegation *nfs_inode_detach_delegation(struct inode *inode)
+static struct nfs_delegation *
+nfs_inode_detach_delegation(struct inode *inode)
 {
 	struct nfs_inode *nfsi = NFS_I(inode);
 	struct nfs_server *server = NFS_SERVER(inode);
@@ -387,8 +386,9 @@ static struct nfs_delegation *nfs_inode_detach_delegation(struct inode *inode)
 	return delegation;
 }
 
-static void nfs_update_delegation_cred(struct nfs_delegation *delegation,
-				       const struct cred *cred)
+static void
+nfs_update_delegation_cred(struct nfs_delegation *delegation,
+		const struct cred *cred)
 {
 	const struct cred *old;
 
@@ -398,8 +398,9 @@ static void nfs_update_delegation_cred(struct nfs_delegation *delegation,
 	}
 }
 
-static void nfs_update_inplace_delegation(struct nfs_delegation *delegation,
-					  const struct nfs_delegation *update)
+static void
+nfs_update_inplace_delegation(struct nfs_delegation *delegation,
+		const struct nfs_delegation *update)
 {
 	if (nfs4_stateid_is_newer(&update->stateid, &delegation->stateid)) {
 		delegation->stateid.seqid = update->stateid.seqid;
@@ -427,8 +428,9 @@ static void nfs_update_inplace_delegation(struct nfs_delegation *delegation,
  * Returns zero on success, or a negative errno value.
  */
 int nfs_inode_set_delegation(struct inode *inode, const struct cred *cred,
-			     fmode_t type, const nfs4_stateid *stateid,
-			     unsigned long pagemod_limit)
+				  fmode_t type,
+				  const nfs4_stateid *stateid,
+				  unsigned long pagemod_limit)
 {
 	struct nfs_server *server = NFS_SERVER(inode);
 	struct nfs_client *clp = server->nfs_client;
@@ -447,19 +449,20 @@ int nfs_inode_set_delegation(struct inode *inode, const struct cred *cred,
 	delegation->change_attr = inode_peek_iversion_raw(inode);
 	delegation->cred = get_cred(cred);
 	delegation->inode = inode;
-	delegation->flags = 1 << NFS_DELEGATION_REFERENCED;
+	delegation->flags = 1<<NFS_DELEGATION_REFERENCED;
 	spin_lock_init(&delegation->lock);
 
 	spin_lock(&clp->cl_lock);
-	old_delegation = rcu_dereference_protected(
-		nfsi->delegation, lockdep_is_held(&clp->cl_lock));
+	old_delegation = rcu_dereference_protected(nfsi->delegation,
+					lockdep_is_held(&clp->cl_lock));
 	if (old_delegation == NULL)
 		goto add_new;
 	/* Is this an update of the existing delegation? */
 	if (nfs4_stateid_match_other(&old_delegation->stateid,
-				     &delegation->stateid)) {
+				&delegation->stateid)) {
 		spin_lock(&old_delegation->lock);
-		nfs_update_inplace_delegation(old_delegation, delegation);
+		nfs_update_inplace_delegation(old_delegation,
+				delegation);
 		spin_unlock(&old_delegation->lock);
 		goto out;
 	}
@@ -470,10 +473,9 @@ int nfs_inode_set_delegation(struct inode *inode, const struct cred *cred,
 		 * Allow for upgrades to a WRITE delegation, but
 		 * nothing else.
 		 */
-		dfprintk(FILE,
-			 "%s: server %s handed out "
-			 "a duplicate delegation!\n",
-			 __func__, clp->cl_hostname);
+		dfprintk(FILE, "%s: server %s handed out "
+				"a duplicate delegation!\n",
+				__func__, clp->cl_hostname);
 		if (delegation->type == old_delegation->type ||
 		    !(delegation->type & FMODE_WRITE)) {
 			freeme = delegation;
@@ -481,7 +483,7 @@ int nfs_inode_set_delegation(struct inode *inode, const struct cred *cred,
 			goto out;
 		}
 		if (test_and_set_bit(NFS_DELEGATION_RETURNING,
-				     &old_delegation->flags))
+					&old_delegation->flags))
 			goto out;
 	}
 	freeme = nfs_detach_delegation_locked(nfsi, old_delegation, clp);
@@ -495,14 +497,13 @@ add_new:
 	 */
 	spin_lock(&inode->i_lock);
 	if (NFS_I(inode)->cache_validity & NFS_INO_INVALID_CHANGE)
-		nfs_set_cache_invalid(
-			inode,
+		nfs_set_cache_invalid(inode,
 			NFS_INO_INVALID_ATIME | NFS_INO_INVALID_CTIME |
-				NFS_INO_INVALID_MTIME | NFS_INO_INVALID_SIZE |
-				NFS_INO_INVALID_BLOCKS | NFS_INO_INVALID_NLINK |
-				NFS_INO_INVALID_OTHER | NFS_INO_INVALID_DATA |
-				NFS_INO_INVALID_ACCESS | NFS_INO_INVALID_ACL |
-				NFS_INO_INVALID_XATTR);
+			NFS_INO_INVALID_MTIME | NFS_INO_INVALID_SIZE |
+			NFS_INO_INVALID_BLOCKS | NFS_INO_INVALID_NLINK |
+			NFS_INO_INVALID_OTHER | NFS_INO_INVALID_DATA |
+			NFS_INO_INVALID_ACCESS | NFS_INO_INVALID_ACL |
+			NFS_INO_INVALID_XATTR);
 	spin_unlock(&inode->i_lock);
 
 	list_add_tail_rcu(&delegation->super_list, &server->delegations);
@@ -526,9 +527,7 @@ out:
 /*
  * Basic procedure for returning a delegation to the server
  */
-static int nfs_end_delegation_return(struct inode *inode,
-				     struct nfs_delegation *delegation,
-				     int issync)
+static int nfs_end_delegation_return(struct inode *inode, struct nfs_delegation *delegation, int issync)
 {
 	struct nfs_client *clp = NFS_SERVER(inode)->nfs_client;
 	unsigned int mode = O_WRONLY | O_RDWR;
@@ -546,7 +545,7 @@ static int nfs_end_delegation_return(struct inode *inode,
 		if (test_bit(NFS_DELEGATION_REVOKED, &delegation->flags))
 			break;
 		err = nfs_delegation_claim_opens(inode, &delegation->stateid,
-						 delegation->type);
+				delegation->type);
 		if (!issync || err != -EAGAIN)
 			break;
 		/*
@@ -573,8 +572,7 @@ static bool nfs_delegation_need_return(struct nfs_delegation *delegation)
 
 	if (test_and_clear_bit(NFS_DELEGATION_RETURN, &delegation->flags))
 		ret = true;
-	else if (test_bit(NFS_DELEGATION_RETURN_IF_CLOSED,
-			  &delegation->flags)) {
+	else if (test_bit(NFS_DELEGATION_RETURN_IF_CLOSED, &delegation->flags)) {
 		struct inode *inode;
 
 		spin_lock(&delegation->lock);
@@ -594,7 +592,7 @@ static bool nfs_delegation_need_return(struct nfs_delegation *delegation)
 }
 
 static int nfs_server_return_marked_delegations(struct nfs_server *server,
-						void __always_unused *data)
+		void __always_unused *data)
 {
 	struct nfs_delegation *delegation;
 	struct nfs_delegation *prev;
@@ -621,8 +619,7 @@ restart:
 	if (!delegation || delegation != place_holder_deleg)
 		delegation = list_entry_rcu(server->delegations.next,
 					    struct nfs_delegation, super_list);
-	list_for_each_entry_from_rcu (delegation, &server->delegations,
-				      super_list) {
+	list_for_each_entry_from_rcu(delegation, &server->delegations, super_list) {
 		struct inode *to_put = NULL;
 
 		if (test_bit(NFS_DELEGATION_INODE_FREEING, &delegation->flags))
@@ -785,15 +782,12 @@ void nfs4_inode_return_delegation_on_close(struct inode *inode)
 	if (!delegation)
 		goto out;
 	if (test_bit(NFS_DELEGATION_RETURN_IF_CLOSED, &delegation->flags) ||
-	    atomic_long_read(&nfs_active_delegations) >=
-		    nfs_delegation_watermark) {
+	    atomic_long_read(&nfs_active_delegations) >= nfs_delegation_watermark) {
 		spin_lock(&delegation->lock);
 		if (delegation->inode &&
 		    list_empty(&NFS_I(inode)->open_files) &&
-		    !test_and_set_bit(NFS_DELEGATION_RETURNING,
-				      &delegation->flags)) {
-			clear_bit(NFS_DELEGATION_RETURN_IF_CLOSED,
-				  &delegation->flags);
+		    !test_and_set_bit(NFS_DELEGATION_RETURNING, &delegation->flags)) {
+			clear_bit(NFS_DELEGATION_RETURN_IF_CLOSED, &delegation->flags);
 			/* Refcount matched in nfs_end_delegation_return() */
 			ret = nfs_get_delegation(delegation);
 		}
@@ -830,9 +824,8 @@ int nfs4_inode_make_writeable(struct inode *inode)
 	return nfs4_inode_return_delegation(inode);
 }
 
-static void
-nfs_mark_return_if_closed_delegation(struct nfs_server *server,
-				     struct nfs_delegation *delegation)
+static void nfs_mark_return_if_closed_delegation(struct nfs_server *server,
+		struct nfs_delegation *delegation)
 {
 	set_bit(NFS_DELEGATION_RETURN_IF_CLOSED, &delegation->flags);
 	set_bit(NFS4CLNT_DELEGRETURN, &server->nfs_client->cl_state);
@@ -843,7 +836,7 @@ static bool nfs_server_mark_return_all_delegations(struct nfs_server *server)
 	struct nfs_delegation *delegation;
 	bool ret = false;
 
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list) {
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list) {
 		nfs_mark_return_delegation(server, delegation);
 		ret = true;
 	}
@@ -855,7 +848,7 @@ static void nfs_client_mark_return_all_delegations(struct nfs_client *clp)
 	struct nfs_server *server;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu (server, &clp->cl_superblocks, client_link)
+	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link)
 		nfs_server_mark_return_all_delegations(server);
 	rcu_read_unlock();
 }
@@ -901,34 +894,31 @@ void nfs_server_return_all_delegations(struct nfs_server *server)
 }
 
 static void nfs_mark_return_unused_delegation_types(struct nfs_server *server,
-						    fmode_t flags)
+						 fmode_t flags)
 {
 	struct nfs_delegation *delegation;
 
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list) {
-		if ((delegation->type == (FMODE_READ | FMODE_WRITE)) &&
-		    !(flags & FMODE_WRITE))
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list) {
+		if ((delegation->type == (FMODE_READ|FMODE_WRITE)) && !(flags & FMODE_WRITE))
 			continue;
 		if (delegation->type & flags)
-			nfs_mark_return_if_closed_delegation(server,
-							     delegation);
+			nfs_mark_return_if_closed_delegation(server, delegation);
 	}
 }
 
-static void
-nfs_client_mark_return_unused_delegation_types(struct nfs_client *clp,
-					       fmode_t flags)
+static void nfs_client_mark_return_unused_delegation_types(struct nfs_client *clp,
+							fmode_t flags)
 {
 	struct nfs_server *server;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu (server, &clp->cl_superblocks, client_link)
+	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link)
 		nfs_mark_return_unused_delegation_types(server, flags);
 	rcu_read_unlock();
 }
 
 static void nfs_revoke_delegation(struct inode *inode,
-				  const nfs4_stateid *stateid)
+		const nfs4_stateid *stateid)
 {
 	struct nfs_delegation *delegation;
 	nfs4_stateid tmp;
@@ -946,8 +936,7 @@ static void nfs_revoke_delegation(struct inode *inode,
 			goto out;
 		spin_lock(&delegation->lock);
 		if (stateid->seqid) {
-			if (nfs4_stateid_is_newer(&delegation->stateid,
-						  stateid)) {
+			if (nfs4_stateid_is_newer(&delegation->stateid, stateid)) {
 				spin_unlock(&delegation->lock);
 				goto out;
 			}
@@ -963,14 +952,15 @@ out:
 		nfs_inode_find_state_and_recover(inode, stateid);
 }
 
-void nfs_remove_bad_delegation(struct inode *inode, const nfs4_stateid *stateid)
+void nfs_remove_bad_delegation(struct inode *inode,
+		const nfs4_stateid *stateid)
 {
 	nfs_revoke_delegation(inode, stateid);
 }
 EXPORT_SYMBOL_GPL(nfs_remove_bad_delegation);
 
 void nfs_delegation_mark_returned(struct inode *inode,
-				  const nfs4_stateid *stateid)
+		const nfs4_stateid *stateid)
 {
 	struct nfs_delegation *delegation;
 
@@ -1021,9 +1011,8 @@ static void nfs_mark_return_unreferenced_delegations(struct nfs_server *server)
 {
 	struct nfs_delegation *delegation;
 
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list) {
-		if (test_and_clear_bit(NFS_DELEGATION_REFERENCED,
-				       &delegation->flags))
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list) {
+		if (test_and_clear_bit(NFS_DELEGATION_REFERENCED, &delegation->flags))
 			continue;
 		nfs_mark_return_if_closed_delegation(server, delegation);
 	}
@@ -1039,7 +1028,7 @@ void nfs_expire_unreferenced_delegations(struct nfs_client *clp)
 	struct nfs_server *server;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu (server, &clp->cl_superblocks, client_link)
+	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link)
 		nfs_mark_return_unreferenced_delegations(server);
 	rcu_read_unlock();
 
@@ -1088,12 +1077,11 @@ nfs_delegation_find_inode_server(struct nfs_server *server,
 	struct super_block *freeme = NULL;
 	struct inode *res = NULL;
 
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list) {
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list) {
 		spin_lock(&delegation->lock);
 		if (delegation->inode != NULL &&
 		    !test_bit(NFS_DELEGATION_REVOKED, &delegation->flags) &&
-		    nfs_compare_fh(fhandle, &NFS_I(delegation->inode)->fh) ==
-			    0) {
+		    nfs_compare_fh(fhandle, &NFS_I(delegation->inode)->fh) == 0) {
 			if (nfs_sb_active(server->super)) {
 				freeme = server->super;
 				res = igrab(delegation->inode);
@@ -1128,7 +1116,7 @@ struct inode *nfs_delegation_find_inode(struct nfs_client *clp,
 	struct inode *res;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu (server, &clp->cl_superblocks, client_link) {
+	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link) {
 		res = nfs_delegation_find_inode_server(server, fhandle);
 		if (res != ERR_PTR(-ENOENT)) {
 			rcu_read_unlock();
@@ -1143,7 +1131,7 @@ static void nfs_delegation_mark_reclaim_server(struct nfs_server *server)
 {
 	struct nfs_delegation *delegation;
 
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list) {
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list) {
 		/*
 		 * If the delegation may have been admin revoked, then we
 		 * cannot reclaim it.
@@ -1164,25 +1152,26 @@ void nfs_delegation_mark_reclaim(struct nfs_client *clp)
 	struct nfs_server *server;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu (server, &clp->cl_superblocks, client_link)
+	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link)
 		nfs_delegation_mark_reclaim_server(server);
 	rcu_read_unlock();
 }
 
 static int nfs_server_reap_unclaimed_delegations(struct nfs_server *server,
-						 void __always_unused *data)
+		void __always_unused *data)
 {
 	struct nfs_delegation *delegation;
 	struct inode *inode;
 restart:
 	rcu_read_lock();
 restart_locked:
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list) {
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list) {
 		if (test_bit(NFS_DELEGATION_INODE_FREEING,
-			     &delegation->flags) ||
-		    test_bit(NFS_DELEGATION_RETURNING, &delegation->flags) ||
-		    test_bit(NFS_DELEGATION_NEED_RECLAIM, &delegation->flags) ==
-			    0)
+					&delegation->flags) ||
+		    test_bit(NFS_DELEGATION_RETURNING,
+					&delegation->flags) ||
+		    test_bit(NFS_DELEGATION_NEED_RECLAIM,
+					&delegation->flags) == 0)
 			continue;
 		inode = nfs_delegation_grab_inode(delegation);
 		if (inode == NULL)
@@ -1191,7 +1180,7 @@ restart_locked:
 		rcu_read_unlock();
 		if (delegation != NULL) {
 			if (nfs_detach_delegation(NFS_I(inode), delegation,
-						  server) != NULL)
+						server) != NULL)
 				nfs_free_delegation(delegation);
 			/* Match nfs_start_delegation_return_locked */
 			nfs_put_delegation(delegation);
@@ -1212,18 +1201,18 @@ restart_locked:
 void nfs_delegation_reap_unclaimed(struct nfs_client *clp)
 {
 	nfs_client_for_each_server(clp, nfs_server_reap_unclaimed_delegations,
-				   NULL);
+			NULL);
 }
 
 static inline bool nfs4_server_rebooted(const struct nfs_client *clp)
 {
-	return (clp->cl_state &
-		(BIT(NFS4CLNT_CHECK_LEASE) | BIT(NFS4CLNT_LEASE_EXPIRED) |
-		 BIT(NFS4CLNT_SESSION_RESET))) != 0;
+	return (clp->cl_state & (BIT(NFS4CLNT_CHECK_LEASE) |
+				BIT(NFS4CLNT_LEASE_EXPIRED) |
+				BIT(NFS4CLNT_SESSION_RESET))) != 0;
 }
 
 static void nfs_mark_test_expired_delegation(struct nfs_server *server,
-					     struct nfs_delegation *delegation)
+	    struct nfs_delegation *delegation)
 {
 	if (delegation->stateid.type == NFS4_INVALID_STATEID_TYPE)
 		return;
@@ -1233,7 +1222,7 @@ static void nfs_mark_test_expired_delegation(struct nfs_server *server,
 }
 
 static void nfs_inode_mark_test_expired_delegation(struct nfs_server *server,
-						   struct inode *inode)
+		struct inode *inode)
 {
 	struct nfs_delegation *delegation;
 
@@ -1242,13 +1231,14 @@ static void nfs_inode_mark_test_expired_delegation(struct nfs_server *server,
 	if (delegation)
 		nfs_mark_test_expired_delegation(server, delegation);
 	rcu_read_unlock();
+
 }
 
 static void nfs_delegation_mark_test_expired_server(struct nfs_server *server)
 {
 	struct nfs_delegation *delegation;
 
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list)
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list)
 		nfs_mark_test_expired_delegation(server, delegation);
 }
 
@@ -1264,7 +1254,7 @@ void nfs_mark_test_expired_all_delegations(struct nfs_client *clp)
 	struct nfs_server *server;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu (server, &clp->cl_superblocks, client_link)
+	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link)
 		nfs_delegation_mark_test_expired_server(server);
 	rcu_read_unlock();
 }
@@ -1281,9 +1271,10 @@ void nfs_test_expired_all_delegations(struct nfs_client *clp)
 	nfs4_schedule_state_manager(clp);
 }
 
-static void nfs_delegation_test_free_expired(struct inode *inode,
-					     nfs4_stateid *stateid,
-					     const struct cred *cred)
+static void
+nfs_delegation_test_free_expired(struct inode *inode,
+		nfs4_stateid *stateid,
+		const struct cred *cred)
 {
 	struct nfs_server *server = NFS_SERVER(inode);
 	const struct nfs4_minor_version_ops *ops = server->nfs_client->cl_mvops;
@@ -1297,7 +1288,7 @@ static void nfs_delegation_test_free_expired(struct inode *inode,
 }
 
 static int nfs_server_reap_expired_delegations(struct nfs_server *server,
-					       void __always_unused *data)
+		void __always_unused *data)
 {
 	struct nfs_delegation *delegation;
 	struct inode *inode;
@@ -1306,12 +1297,13 @@ static int nfs_server_reap_expired_delegations(struct nfs_server *server,
 restart:
 	rcu_read_lock();
 restart_locked:
-	list_for_each_entry_rcu (delegation, &server->delegations, super_list) {
+	list_for_each_entry_rcu(delegation, &server->delegations, super_list) {
 		if (test_bit(NFS_DELEGATION_INODE_FREEING,
-			     &delegation->flags) ||
-		    test_bit(NFS_DELEGATION_RETURNING, &delegation->flags) ||
-		    test_bit(NFS_DELEGATION_TEST_EXPIRED, &delegation->flags) ==
-			    0)
+					&delegation->flags) ||
+		    test_bit(NFS_DELEGATION_RETURNING,
+					&delegation->flags) ||
+		    test_bit(NFS_DELEGATION_TEST_EXPIRED,
+					&delegation->flags) == 0)
 			continue;
 		inode = nfs_delegation_grab_inode(delegation);
 		if (inode == NULL)
@@ -1329,7 +1321,7 @@ restart_locked:
 			cond_resched();
 			goto restart;
 		}
-		nfs_inode_mark_test_expired_delegation(server, inode);
+		nfs_inode_mark_test_expired_delegation(server,inode);
 		iput(inode);
 		return -EAGAIN;
 	}
@@ -1349,11 +1341,11 @@ restart_locked:
 void nfs_reap_expired_delegations(struct nfs_client *clp)
 {
 	nfs_client_for_each_server(clp, nfs_server_reap_expired_delegations,
-				   NULL);
+			NULL);
 }
 
 void nfs_inode_find_delegation_state_and_recover(struct inode *inode,
-						 const nfs4_stateid *stateid)
+		const nfs4_stateid *stateid)
 {
 	struct nfs_client *clp = NFS_SERVER(inode)->nfs_client;
 	struct nfs_delegation *delegation;
@@ -1385,7 +1377,7 @@ int nfs_delegations_present(struct nfs_client *clp)
 	int ret = 0;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu (server, &clp->cl_superblocks, client_link)
+	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link)
 		if (!list_empty(&server->delegations)) {
 			ret = 1;
 			break;
@@ -1434,13 +1426,13 @@ out:
  * otherwise "false" is returned.
  */
 bool nfs4_copy_delegation_stateid(struct inode *inode, fmode_t flags,
-				  nfs4_stateid *dst, const struct cred **cred)
+		nfs4_stateid *dst, const struct cred **cred)
 {
 	struct nfs_inode *nfsi = NFS_I(inode);
 	struct nfs_delegation *delegation;
 	bool ret = false;
 
-	flags &= FMODE_READ | FMODE_WRITE;
+	flags &= FMODE_READ|FMODE_WRITE;
 	rcu_read_lock();
 	delegation = rcu_dereference(nfsi->delegation);
 	if (!delegation)

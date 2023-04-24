@@ -23,7 +23,6 @@
 #include <linux/kernel.h>
 #include <linux/iversion.h>
 #include "fat.h"
-#include <linux/spinlock.h>
 
 static inline unsigned long vfat_d_version(struct dentry *dentry)
 {

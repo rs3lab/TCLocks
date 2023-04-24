@@ -11,7 +11,7 @@
 #include <linux/rwsem.h>
 #include <linux/fs.h>
 #include <linux/nfs_fs.h>
-#include <linux/rwsem.h>
+
 #include "internal.h"
 
 /* Call with exclusively locked inode->i_rwsem */

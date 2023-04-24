@@ -36,8 +36,6 @@
 #include "xfs_reflink.h"
 #include "xfs_ag.h"
 
-#include <linux/rwsem.h>
-
 kmem_zone_t *xfs_inode_zone;
 
 /*

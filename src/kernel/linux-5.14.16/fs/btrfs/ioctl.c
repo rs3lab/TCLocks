@@ -48,8 +48,6 @@
 #include "delalloc-space.h"
 #include "block-group.h"
 
-#include <linux/rwsem.h>
-
 #ifdef CONFIG_64BIT
 /* If we have a 32-bit userspace and 64-bit kernel, then the UAPI
  * structures are incorrect, as the timespec structure from userspace
