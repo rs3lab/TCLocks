@@ -180,20 +180,43 @@ For example, if the VM has 28 cores.
 
 	$ ./TCLocks/scripts/run-micro-benchmark.sh
 
+**Expected Results**:
+
+* The performance for TCLocks at 2-8 cores will be slightly worse than stock.
+* The performance for TCLocks above 8 cores will be better that stock / CNA / Shfllock.
+* The performance will be similar at core count above 12 cores.
+
 ## Macro-benchmark 
 (Figure 7)
 
 	$ ./TCLocks/scripts/run-macro-benchmark.sh
+
+**Expected Results**:
+
+* The performance for TCLocks at 2-8 cores will be similar to stock.
+* The performance for TCLocks above 8 cores will be better than stock / CNA / Shfllock.
 
 ## Nano-benchmark 
 (Figure 8)
 
 	$ ./TCLocks/scripts/run-nano-benchmark.sh
 
+**Expected Results**:
+
+* The performance for TCLocks at 2-4 cores will be similar or lower than stock for spinlock (Figure 8(a)).
+* The performance for TCLocks for Spinlock (Figure 8(a)) / Mutex (Figure 8(c)) / RWSem (Figure 8(d),(e)) above 8 cores will be better that stock / CNA / Shfllock.
+* The performance will improve after adding optimization like NUMA, Prefetching and Waiter to Waiter Jump (Figure 8(f)). 
+* The performance will improve when prefetching 4/6 stack cache lines (Figure 8(g)).
+* The performance will improve with increasing batch size (Figure 8(h)).
+
 ## Userspace-benchmark 
 (Figure 9)
 
 	$ ./TCLocks/scripts/run-userspace-benchmark.sh
+
+**Expected Results**:
+
+* The performance for TCLocks will be better than stock / Mutex / RWSem.
 
 ## Generate data
 	
