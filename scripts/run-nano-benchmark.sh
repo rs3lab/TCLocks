@@ -3,7 +3,7 @@
 
 sleep 60
 
-./pin-vcpu.py
+sudo ./pin-vcpu.py 5555 `nproc`
 
 # Run spinlock (Figure 8(a)) 
 

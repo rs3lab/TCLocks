@@ -7,7 +7,7 @@ do
 
 	sleep 60
 
-	sudo ./pin-vcpu.py
+	sudo ./pin-vcpu.py 5555 `nproc`
 
 	# Run Metis and Psearchy 
 

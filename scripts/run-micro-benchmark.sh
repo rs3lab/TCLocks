@@ -8,7 +8,7 @@ do
 
 	./run-vm.sh ${l} &
 	sleep 60
-	sudo ./pin-vcpu.py
+	sudo ./pin-vcpu.py 5555 `nproc`
 
 	echo Running will-it-scale ${l}
 	ssh -p 4444 ubuntu@localhost 'cd /home/ubuntu/TCLocks/src/benchmarks/will-it-scale/;./runscript.sh'
