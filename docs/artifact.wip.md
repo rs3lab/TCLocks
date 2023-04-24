@@ -29,24 +29,27 @@ This is the directory structure of the TCLocks repo.
 
 	TCLocks
 	  ├── src                  : TCLocks source code
-	  |    ├── concord
-	  |    └── kpatch
-	  ├── benchmarks           : benchmark sets used in the paper
-	  |    ├── will-it-scale
-	  |    ├── fxmark
-	  |    ├── metis
-	  |    ├── levelDB
-	  |    ├── xDir-rename
-	  |    └── lockstat
-	  └── scripts              : script to run qemu
+	  |    ├── kernel
+	  |    |    ├── linux-5.14.16   : Kernel with TCLocks
+	  |    |    ├── rcuht	 	: Hash-table nano-benchmark
+	  |    └── userspace	   : Userspace implementation of TCLocks
+	  |    |    ├── litl 		
+	  |    └── defaults.sh     : Default parameters used for benchmarks
+	  |    ├── benchmarks           : benchmark sets used in the paper
+	  |    |    ├── will-it-scale   
+	  |    |    ├── fxmark
+	  |    |    ├── vbench
+	  |    |    ├── leveldb-1.20
+	  └── scripts              : script to run experiments
+
+Different branches contain the source code of Linux 5.14.16 with different locks. 
 
 ## Environment
-The experiments in this artifact are designed to run on a *NUMA* machine with
+The experiments in this artifact are designed to run on a machine with
 multiple sockets and tens of CPUs.
 The result shown in the paper is evaluated on a 8-socket, 224-core machine
 equipped with Intel Xeon Platinum 8276L CPUs. The machine runs Ubuntu 20.04 with
 Linux 5.4.0 and hyperthreading is disabled.
-
 
 # Getting Started Instructions
 ---
@@ -57,73 +60,63 @@ run TCLocks using the disk image.
 There is also a section guides [how to create the disk
 image](#how-to-create-the-disk-image) from scratch.
 
-
 ## 1. Clone the TCLocks repo
 ---
-Download the compresssed disk image
-[here](update-link).
-Once you finish downloading the file, uncompress it using following command.
 
-	$ pv vm.img.xz | unxz -T <num_threads> > ubuntu-20.04.img
-
-
-In addition, clone the TCLocks repo.
+Clone the TCLocks repo.
 
 	$ git clone https://github.com/rs3lab/TCLocks.git
+	$ cd TCLocks
+
+Download the compresssed disk image
+[here](update-link).
+Once you finish downloading the file, uncompress it using following command and move it to the scripts repo.
+
+	$ wget vm.img.xz
+	$ unxz -T <num_threads> > tclocks-vm.img
+	$ mv tclocks-vm.img TCLocks/scripts/
 
 
-## 2. Start a QEMU virtual machine
+## 2. Build kernel for all four locks.
 ---
 
-Start qemu with following script.
-The script is also available under `TCLocks/scripts/run-vm.sh`.
+The following script builds bzImage for kernels for all four locks: stock, cna, shfllock and tclocks
 
-> [Dependency]
-> You may need following commands to install qemu and execute it without sudo.
->
-	$ sudo apt install qemu-kvm
-	$ sudo chmod 666 /dev/kvm
+	$ ./TCLocks/scripts/build-all-kernel.sh
 
-	$ ./qemu-system-x86_64 \
-		--enable-kvm \
-		-m 128G \
-		-cpu host \
-		-smp cores=28,threads=1,sockets=8 \
-		-numa node,nodeid=0,mem=16G,cpus=0-27 \
-		-numa node,nodeid=1,mem=16G,cpus=28-55 \
-		-numa node,nodeid=2,mem=16G,cpus=56-83 \
-		-numa node,nodeid=3,mem=16G,cpus=84-111 \
-		-numa node,nodeid=4,mem=16G,cpus=112-139 \
-		-numa node,nodeid=5,mem=16G,cpus=140-167 \
-		-numa node,nodeid=6,mem=16G,cpus=168-195 \
-		-numa node,nodeid=7,mem=16G,cpus=196-223 \
-		-drive file=/path/to/downloaded/syncord-vm.img,format=raw \
-		-nographic \
-		-overcommit mem-lock=off
-		-qmp tcp:127.0.0.1:5555,server,nowait \
-		-device virtio-serial-pci,id=virtio-serial0,bus=pci.0,addr=0x6 \
-		-device virtio-net-pci,netdev=hostnet0,id=net0,bus=pci.0,addr=0x3 \
-		-netdev user,id=hostnet0,hostfwd=tcp::4444-:22 \
+## 3. Start a QEMU virtual machine
+---
 
+Start qemu with script under `TCLocks/scripts/run-vm.sh`.
 
 The command starts a virtual machine with 128G of memory and 8 NUMA sockets each
 equipped with 28 cores, results in 224 cores in total. Please adjust the
 numbers and path to the vm image for your environment.
 The script opens port `4444` for ssh and `5555` for qmp.
 
-When you face the grub menu, just wait for 5 seconds, then the guest will be
-start with default `5.14.16-stock` kernel.
+The guest will be start with default `5.14.16-stock` kernel.
 
 The provided disk image contains one 30GB partition holding Ubuntu 20.04 and
 one 20GB partition for experiments.
 There is single user `ubuntu` with password `ubuntu`, who has sudo power.
 Use port 4444 to ssh into the machine.
 
-	$ ssh syncord@localhost -p 4444
+	$ ssh ubuntu@localhost -p 4444
 
 The home directory already contains `TCLocks` repo.
 
-## 3. Pin vCPU to physical cores
+## 4. Setup passwordless-ssh to QEMU virtual machine
+
+Script provided for running experiments require passwordless-ssh to the virtual machine. 
+You can set it up using the following command :
+
+	$ ssh-keygen -t ed25519
+
+Assuming the public key is in ~/.ssh/id_ed25519.pub :
+
+	$ ssh-copy-id -i ~/.ssh/id_ed25519.pub -p 4444 ubuntu@localhost
+
+## 5. Pin vCPU to physical cores
 ---
 
 The port 5555 is for `qmp` which allows us to observe NUMA effect with vCPU by
@@ -131,15 +124,13 @@ pinning each vCPU to physical cores. __This step must be done__ before measuring
 Run the `pin-vcpu.py` script to pin the cores. Here, `num_vm_cores` is 224 with
 above example.
 
-	$ python2 ./TCLocks/scripts/pin-vcpu.py 5555 <num_vm_cores>
+	$ sudo python2 ./TCLocks/scripts/pin-vcpu.py 5555 <num_vm_cores>
 
-> [Dependency] Since the `pin-vcpu.py` use python2.7, you might need following commands to
-> install pip for python2.7 and psutil package.
-> If you didn't change the kvm permission in above [step](#2-start-a-qemu-virtual-machine),
-> run following commands and above `pin-vcpu.py` with `sudo`
+> [Dependency] Since the `pin-vcpu.py` use python3, you might need following commands to
+> install pip for python3 and psutil package.
 
-	$ sudo python2 ./TCLocks/scripts/get-pip.py
-	$ python2 -m pip install psutil
+	$ sudo python3 ./TCLocks/scripts/get-pip.py
+	$ python3 -m pip install psutil
 
 
 Once you start the VM, let's check you're on the right kernel version.
@@ -148,16 +139,17 @@ Once you start the VM, let's check you're on the right kernel version.
 
 If you see `5.14.16-stock`, you're all set and now it's time to use TCLocks!
 
-
-## 4. Build kernel for all four locks.
+## 6. Test the setup
 ---
 
-	$ ./TCLocks/scripts/build-all-kernel.sh
+SSH into the VM and update the defaults.sh file in the `~/TCLocks/src` directory.
 
-## 5. Test the setup
----
+1. Set the `cores`, `mutex_cores` and `python_env_cores` to 1.
+2. Set the `runtime` to 1.
+
+Shutdown the VM and execute in the host machine:
 	
-	$ ./TCLocks/scripts/run-test.sh
+	$ `./TCLocks/scripts/run-all.sh`
 
 
 # Running Experiments
@@ -166,6 +158,22 @@ If you see `5.14.16-stock`, you're all set and now it's time to use TCLocks!
 Main scripts are under `./TCLocks/scripts/`. You can run all of the steps below using :
 	
 	$ ./TCLocks/scripts/run-all.sh
+
+Before running the experiments, update the defaults.sh file in the `~/TCLocks/src` directory.
+
+1. Set the `cores` and `python_env_cores` to a list of CPUs upto the maximum number of CPUs in the VM. 
+For example, if the VM has 28 cores.
+
+	cores=(1 2 4 8 12 16 20 28)
+	python_env_cores='[1,2,4,8,12,16,20,28]'
+
+2. Set the `ncores` to the maximum number of CPUs in the VM.
+
+	ncores=28
+
+3. Set the `runtime` to 30 seconds
+	
+	runtime=30
 
 ## Micro-benchmark 
 (Figure 6)
