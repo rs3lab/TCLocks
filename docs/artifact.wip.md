@@ -76,13 +76,13 @@ Once you finish downloading the file, uncompress it using following command and 
 	$ unxz -T <num_threads> > tclocks-vm.img
 	$ mv tclocks-vm.img TCLocks/scripts/
 
-
 ## 2. Build kernel for all four locks.
 ---
 
 The following script builds bzImage for kernels for all four locks: stock, cna, shfllock and tclocks
 
-	$ ./TCLocks/scripts/build-all-kernel.sh
+	$ cd TCLocks/scripts/
+	$ ./build-all-kernel.sh
 
 ## 3. Start a QEMU virtual machine
 ---
@@ -122,16 +122,11 @@ Assuming the public key is in ~/.ssh/id_ed25519.pub :
 The port 5555 is for `qmp` which allows us to observe NUMA effect with vCPU by
 pinning each vCPU to physical cores. __This step must be done__ before measuring numbers.
 Run the `pin-vcpu.py` script to pin the cores. Here, `num_vm_cores` is 224 with
-above example.
+above example. Install `qmp` 
 
-	$ sudo python2 ./TCLocks/scripts/pin-vcpu.py 5555 <num_vm_cores>
-
-> [Dependency] Since the `pin-vcpu.py` use python3, you might need following commands to
-> install pip for python3 and psutil package.
-
-	$ sudo python3 ./TCLocks/scripts/get-pip.py
-	$ python3 -m pip install psutil
-
+	$ pip install qmp
+	$ pip install psutils
+	$ sudo ./TCLocks/scripts/pin-vcpu.py 5555 <num_vm_cores>
 
 Once you start the VM, let's check you're on the right kernel version.
 
@@ -149,7 +144,8 @@ SSH into the VM and update the defaults.sh file in the `~/TCLocks/src` directory
 
 Shutdown the VM and execute in the host machine:
 	
-	$ `./TCLocks/scripts/run-all.sh`
+	$ cd TCLocks/scripts
+	$ ./run-all.sh
 
 
 # Running Experiments
@@ -157,7 +153,8 @@ Shutdown the VM and execute in the host machine:
 
 Main scripts are under `./TCLocks/scripts/`. You can run all of the steps below using :
 	
-	$ ./TCLocks/scripts/run-all.sh
+	$ cd TCLocks/scripts
+	$ ./run-all.sh
 
 Before running the experiments, update the defaults.sh file in the `~/TCLocks/src` directory.
 
@@ -178,7 +175,8 @@ For example, if the VM has 28 cores.
 ## Micro-benchmark 
 (Figure 6)
 
-	$ ./TCLocks/scripts/run-micro-benchmark.sh
+	$ cd TCLocks/scripts
+	$ ./run-micro-benchmark.sh
 
 **Expected Results**:
 
@@ -189,7 +187,8 @@ For example, if the VM has 28 cores.
 ## Macro-benchmark 
 (Figure 7)
 
-	$ ./TCLocks/scripts/run-macro-benchmark.sh
+	$ cd TCLocks/scripts
+	$ ./run-macro-benchmark.sh
 
 **Expected Results**:
 
@@ -199,7 +198,8 @@ For example, if the VM has 28 cores.
 ## Nano-benchmark 
 (Figure 8)
 
-	$ ./TCLocks/scripts/run-nano-benchmark.sh
+	$ cd TCLocks/scripts
+	$ ./run-nano-benchmark.sh
 
 **Expected Results**:
 
@@ -212,7 +212,8 @@ For example, if the VM has 28 cores.
 ## Userspace-benchmark 
 (Figure 9)
 
-	$ ./TCLocks/scripts/run-userspace-benchmark.sh
+	$ cd TCLocks/scripts
+	$ ./run-userspace-benchmark.sh
 
 **Expected Results**:
 
@@ -220,7 +221,8 @@ For example, if the VM has 28 cores.
 
 ## Generate data
 	
-	$ ./TCLocks/scripts/run-parse-script.sh
+	$ cd TCLocks/scripts
+	$ ./run-parse-script.sh
 
 # How to create the disk image
 ---
