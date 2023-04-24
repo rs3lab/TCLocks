@@ -4,7 +4,7 @@
 #ifdef KERNEL_SYNCSTRESS
 #include "qspinlock_i.h"
 #include "lib/combiner.h"
-#define arch_spinlock_t struct orig_qspinlock
+#define qspinlock orig_qspinlock
 #else
 #define ENABLE_IRQS_CHECK 1
 #include <asm/qspinlock.h>
@@ -27,7 +27,7 @@ struct komb_node {
 	int socket_id;
 	int cpuid;
 	uint64_t rsp;
-	arch_spinlock_t *lock;
+	struct qspinlock *lock;
 	int irqs_disabled;
 	struct task_struct *task_struct_ptr;
 	char dummy1[12];
@@ -59,18 +59,14 @@ void komb_free(void);
 /*
  * Public API
  */
-void komb_spin_lock_init(arch_spinlock_t *lock);
-void komb_spin_lock(arch_spinlock_t *lock);
-void komb_spin_unlock(arch_spinlock_t *lock);
-bool komb_spin_trylock(arch_spinlock_t *lock);
-void komb_spin_lock_nested(arch_spinlock_t *lock, int level);
-void komb_assert_spin_locked(arch_spinlock_t *lock);
-int komb_spin_is_locked(arch_spinlock_t *lock);
+extern void komb_spin_lock_init(struct qspinlock *lock);
+extern int komb_spin_is_locked(struct qspinlock *lock);
+extern int komb_spin_value_unlocked(struct qspinlock lock);
+extern int komb_spin_is_contended(struct qspinlock *lock);
+extern int komb_spin_trylock(struct qspinlock *lock);
+extern void komb_spin_lock(struct qspinlock *lock);
+extern void komb_spin_unlock(struct qspinlock *lock);
 
-struct task_struct *komb_get_current(arch_spinlock_t *lock);
-void komb_set_current_state(arch_spinlock_t *lock, unsigned int state);
-#ifdef KOMB_STATS
-void komb_print_stats(void);
-#endif
-
+struct task_struct *komb_get_current(spinlock_t *lock);
+void komb_set_current_state(spinlock_t *lock, unsigned int state);
 #endif

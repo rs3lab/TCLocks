@@ -7,6 +7,8 @@
  *
  * Assume IRQ is disabled. Will enable when returning.
  */
+#include <linux/kernel.h>
+#include <linux/percpu.h>
 
 #define NUMA_AWARE 1
 #define PREFETCHING 1
@@ -74,3 +76,22 @@
 extern long komb_batch_size;
 
 void komb_context_switch(void *incoming_rsp_ptr, void *outgoing_rsp_ptr);
+
+#ifdef KOMB_STATS
+DECLARE_PER_CPU_ALIGNED(u64, combiner_count);
+DECLARE_PER_CPU_ALIGNED(u64, waiter_combined);
+DECLARE_PER_CPU_ALIGNED(u64, ooo_combiner_count);
+DECLARE_PER_CPU_ALIGNED(u64, ooo_waiter_combined);
+DECLARE_PER_CPU_ALIGNED(u64, ooo_unlocks);
+DECLARE_PER_CPU_ALIGNED(u64, lock_not_in_task);
+DECLARE_PER_CPU_ALIGNED(u64, mutex_combiner_count);
+DECLARE_PER_CPU_ALIGNED(u64, mutex_waiter_combined);
+DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_combiner_count);
+DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_waiter_combined);
+DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_unlocks);
+DECLARE_PER_CPU_ALIGNED(u64, rwsem_combiner_count);
+DECLARE_PER_CPU_ALIGNED(u64, rwsem_waiter_combined);
+DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_combiner_count);
+DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_waiter_combined);
+DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_unlocks);
+#endif
