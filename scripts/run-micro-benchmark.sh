@@ -1,6 +1,9 @@
 
-locks=(stock cna shfllock)
-locks=(tclocks)
+locks=(stock cna shfllock tclocks)
+
+touch completion.log
+
+echo "Micro-benchmark start" >> completion.log
 
 for l in ${locks[@]}
 do
@@ -10,15 +13,17 @@ do
 	sleep 60
 	sudo ./pin-vcpu.py 5555 `nproc`
 
-	echo Running will-it-scale ${l}
+	echo "Running will-it-scale ${l}" >> completion.log
 	ssh -p 4444 ubuntu@localhost 'cd /home/ubuntu/TCLocks/src/benchmarks/will-it-scale/;./runscript.sh'
 	sleep 5
 
-	echo Running FxMark ${l}
+	echo "Running FxMark ${l}" >> completion.log
 	ssh -p 4444 ubuntu@localhost 'cd /home/ubuntu/TCLocks/src/benchmarks/fxmark/;./run-fxmark.sh'
-	sleep 5
+	sleep 10
 
-	ssh -t -p 4444 ubuntu@localhost 'sudo shutdown now'
+	sudo pkill -9 qemu
+
 	sleep 30
 done
 
+echo "Micro-benchmark end" >> completion.log
