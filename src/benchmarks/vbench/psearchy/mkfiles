@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+if [ $# != 1 ]; then
+    echo "Usage: $0 src-path" >&2
+    exit 2
+fi
+
+find $1 -type f | grep -v '/\.git/' | xargs stat -c '%s %n' | sort -nr | sed -e 's/^[0-9]* //'

@@ -1,0 +1,265 @@
+#!/usr/bin/env python
+import time
+import signal
+import itertools
+import operator
+
+def now():
+    return time.time()
+
+class Source:
+  """
+  Uniquely identifies place at which measurable value was obtained.
+
+  """
+  def __init__(self, path=[]):
+    self.path = tuple(path)
+
+  def __repr__(self):
+    return '/'.join(self.path)
+
+  def __eq__(self, other):
+    return self.path == other.path
+
+  def __hash__(self):
+    return hash(self.path)
+
+  def __nonzero__(self):
+    return bool(self.path)
+
+
+class Measurable:
+  """
+  Descruibes a class of things which can be measured.
+  Associated with Source and value creates a Sample.
+
+  """
+  def __init__(self, name, description=None, tags=[]):
+    self.name = name
+    self.description = description
+    self.tags = set(tags)
+
+  def add_tag(self, tag):
+    self.tags.add(tag)
+
+  def __str__(self):
+    return self.name
+
+  def __repr__(self):
+    return self.name
+
+
+class Counter(Measurable):
+  """
+  Measurable which changes monotonically
+
+  """
+  pass
+
+
+class Subject:
+  def __init__(self, source, measurable):
+    self.source = source
+    self.measurable = measurable
+
+  def __repr__(self):
+    return str((self.source, self.measurable))
+
+  def __eq__(self, other):
+    return self.source == other.source and self.measurable == other.measurable
+
+  def __hash__(self):
+    return hash((self.source, self.measurable))
+
+
+class Sample:
+  def __init__(self, subject, time, value):
+    self.subject = subject
+    self.time = time
+    self.value = value
+
+  def split_by_subject(self):
+    return (self.subject, (self.time, self.value))
+
+
+TAG_MEMORY = 'memory'
+TAG_CPU = 'cpu'
+TAG_DISK = 'disk'
+TAG_NET = 'net'
+
+pgflt = Counter('pgflt', 'Page faults', tags=[TAG_MEMORY])
+intr  = Counter('intr',  'Interrupts')
+ctxt  = Counter('ctxt',  'Context switches')
+
+cpu_nice   = Counter('cpu_nice',   'CPU nice',   tags=[TAG_CPU])
+cpu_system = Counter('cpu_system', 'CPU system', tags=[TAG_CPU])
+cpu_idle   = Counter('cpu_idle',   'CPU idle',   tags=[TAG_CPU])
+cpu_iowait = Counter('cpu_iowait', 'CPU iowait', tags=[TAG_CPU])
+
+def probe_stat_counters():
+  with open('/proc/stat', 'r') as f:
+    for line in f:
+      _now = now()
+      tokens = line.split()
+      name = tokens[0]
+      values = tokens[1:]
+      if name == 'intr':
+        yield Sample(Subject(Source(), intr), _now, int(values[0]))
+      elif name == 'ctxt':
+        yield Sample(Subject(Source(), ctxt), _now, int(values[0]))
+      elif name.startswith('cpu') and name != 'cpu':
+        source = Source(['cpu', name])
+        yield Sample(Subject(source, cpu_nice),   _now, int(values[1]))
+        yield Sample(Subject(source, cpu_system), _now, int(values[2]))
+        yield Sample(Subject(source, cpu_idle),   _now, int(values[3]))
+        yield Sample(Subject(source, cpu_iowait), _now, int(values[4]))
+
+def probe_vmstat_counters():
+  with open('/proc/vmstat', 'r') as f:
+    for line in f:
+      tokens = line.split()
+      name = tokens[0]
+      value = tokens[1]
+      if name == 'pgfault':
+        yield Sample(Subject(Source(), pgflt), now(), int(value))
+
+def tag_with(tag_name, *args):
+  for measurable in args:
+    measurable.add_tag(tag_name)
+  return args
+
+kvm_counters = []
+kvm_counters.extend(tag_with("kvm_exits",
+  Counter("exits",               "VM exits"),
+  Counter("irq_exits",           "VM exits (external interrupt)"),
+  Counter("irq_window",          "VM exits (interrupt window"),
+  Counter("request_irq",         "VM exits (interrupt window request)"),
+  Counter("io_exits",            "VM exits (PIO)"),
+  Counter("mmio_exits",          "VM exits (MMIO)"),
+  Counter("signal_exits",        "VM exits (host signal)"),
+  Counter("halt_exits",          "VM exits (halt)"),
+  Counter("halt_wakeup",         "Halt wakeups")))
+
+kvm_counters.extend(tag_with("kvm_intr",
+  Counter("irq_injections",      "IRQ injections"),
+  Counter("nmi_injections",      "NMI injections"),
+  Counter("nmi_window",          "NMI window")))
+
+kvm_counters.extend(tag_with("kvm_mmu",
+  Counter("mmu_cache_miss",      "MMU cache misses"),
+  Counter("mmu_flooded",         "MMU floods"),
+  Counter("mmu_pde_zapped",      "MMU PDE zaps"),
+  Counter("mmu_pte_updated",     "MMU PTE updates"),
+  Counter("mmu_pte_write",       "MMU PTE writes"),
+  Counter("mmu_recycled",        "MMU recycles"),
+  Counter("mmu_shadow_zapped",   "MMU shadow zaps"),
+  Counter("mmu_unsync",          "MMU unsyncs")))
+
+kvm_counters.extend(tag_with("kvm_tlb",
+  Counter("remote_tlb_flush",    "TLB flushes (remote)"),
+  Counter("invlpg",              "TLB entry invalidations (INVLPG)"),
+  Counter("tlb_flush",           "TLB flushes")))
+
+kvm_counters.extend(tag_with("kvm_paging",
+  Counter("largepages",          "Large pages in use"),
+  Counter("pf_fixed",            "Fixed (non-paging) PTEs"),
+  Counter("pf_guest",            "Page faults injected")))
+
+kvm_counters.extend(tag_with("kvm_reload",
+  Counter("host_state_reload",   "Host state reloads"),
+  Counter("efer_reload",         "EFER reloads"),
+  Counter("fpu_reload",          "FPU reloads"),
+  Counter("hypercalls",          "Hypervisor service calls")))
+
+kvm_counters.extend(tag_with("kvm_emul",
+  Counter("insn_emulation",      "Emulated instructions"),
+  Counter("insn_emulation_fail", "Emulated instructions (failed)")))
+
+def probe_kvm_counters():
+  source = Source(['kvm'])
+  for counter in kvm_counters:
+    with open('/sys/kernel/debug/kvm/%s' % (counter.name), 'r') as f:
+      yield Sample(Subject(source, counter), now(), int(f.read()))
+
+io_sectors_rd = Counter("io_sector_rd", "I/O sectors read",    tags=[TAG_DISK])
+io_sectors_wr = Counter("io_sector_wr", "I/O sectors written", tags=[TAG_DISK])
+
+def probe_proc_diskstats():
+    with open('/proc/diskstats', 'r') as f:
+      for line in f:
+        tokens = line.split()
+        key = tokens[2]
+        if tokens[1] == "0":
+          _now = now()
+          source = Source(['disks', key])
+          yield Sample(Subject(source, io_sectors_rd), _now, int(tokens[5]))
+          yield Sample(Subject(source, io_sectors_wr), _now, int(tokens[9]))
+
+net_rx_bytes = Counter("net_rx_bytes", "RX bytes", tags=[TAG_NET])
+net_tx_bytes = Counter("net_tx_bytes", "TX bytes", tags=[TAG_NET])
+
+def probe_proc_netstats():
+    with open('/proc/net/dev', 'r') as f:
+      for line in f:
+        tokens = line.split(':')
+        if (len(tokens) == 2):
+          key = tokens[0].strip()
+          netstat = tokens[1].split()
+          _now = now()
+          source = Source(['net', key])
+          yield Sample(Subject(source, net_rx_bytes), _now, int(netstat[0]))
+          yield Sample(Subject(source, net_tx_bytes), _now, int(netstat[8]))
+
+def probe_all():
+  return list(itertools.chain(
+      #probe_vmstat_counters(),
+      #probe_stat_counters(),
+      probe_kvm_counters()))
+      #probe_proc_diskstats(),
+      #probe_proc_netstats()))
+
+def hash_by_subject(samples):
+  return dict(map(Sample.split_by_subject, samples))
+
+def delta(prev_samples, new_samples):
+  old_values = hash_by_subject(prev_samples)
+  new_values = hash_by_subject(new_samples)
+  diff = {}
+  for key, old_measurements in old_values.iteritems():
+    diff[key] = map(operator.sub, new_values[key], old_measurements)
+  return diff
+
+def print_counter(description, value):
+  print("%15s      %s" % ("{:,}".format(value), description))
+
+def print_diff(prev_samples, new_samples):
+  delta_probes = delta(prev_samples, new_samples)
+  for key in sorted(delta_probes.keys(), key=str):
+    dt, dval = delta_probes[key]
+
+    if key.source:
+      desc = '%-40s (%s)' % (key.measurable.description, str(key.source))
+    else:
+      desc = '%-40s' % (key.measurable.description)
+
+    if (dval > 0):
+        print_counter(desc, dval)
+
+
+if __name__ == "__main__":
+  print("\n  Virtualization stats")
+
+  first_samples = probe_all()
+
+  try:
+    prev_samples = first_samples
+    while True:
+      time.sleep(1)
+      new_samples = probe_all()
+      print_diff(prev_samples, new_samples)
+      print('\n')
+      prev_samples = new_samples
+  except KeyboardInterrupt:
+    print '\nSince the beginning:'
+    print_diff(first_samples, probe_all())
+

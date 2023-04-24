@@ -1,0 +1,10 @@
+== Requirements ==
+
+VBENCH is a fork of MOSBENCH but allows running benchmarks inside
+VM as well. Please look at README.MOSBENCH to make VBENCH work
+solely on host.
+
+gmake_qemu
+==========
+- copy mkmounts and prefetch to the home directory and clone the
+repo inside the VM too.

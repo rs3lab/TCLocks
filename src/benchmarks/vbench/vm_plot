@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+
+from matplotlib import pyplot as plt
+import numpy as np
+import argparse
+import csv
+import os
+
+def plot_kvm_counters(rows, labels, title):
+    y = np.row_stack((values for values in rows))
+    x = np.arange(len(rows[0]))
+
+    plt.title(title)
+    plt.grid('on')
+    polys = plt.stackplot(x, y)
+    proxies = []
+    for poly in polys:
+        proxies.append(plt.Rectangle((0, 0), 1, 1, fc=poly.get_facecolor()[0]))
+    plt.legend(proxies, [label for label in labels], prop={'size':5})
+
+
+def plot_kvm_exits(data):
+    exits      = data["kvmexits"]
+    irq_exits  = data["kvmirq_exits"]
+    io_exits   = data["kvmio_exits"]
+    mmio_exits = data["kvmmmio_exits"]
+    halt_exits = data["kvmhalt_exits"]
+
+    plot_kvm_counters([exits, irq_exits, io_exits, mmio_exits, halt_exits],
+            ["exits", "irq_exits", "io_exits", "mmio_exits", "halt_exits"],
+            "KVM exit")
+
+def plot_kvm_tlbflush(data):
+    rtlb_flush = data["kvmremote_tlb_flush"]
+    tlb_flush  = data["kvmtlb_flush"]
+
+    plot_kvm_counters([tlb_flush, rtlb_flush],
+            ["tlf_flush", "rtlb_flush"], "KVM TLB flush")
+
+def plot_kvm_irqs(data):
+    irq_injections  = data["kvmirq_injections"]
+    irq_window      = data["kvmirq_window"]
+
+    plot_kvm_counters([irq_injections, irq_window],
+            ["irq_injections", "irq_window"], "KVM IRQ info")
+
+
+def plot_kvm_misc_stats(data):
+    halt_wakeup       = data["kvmhalt_wakeup"]
+    host_state_reload = data["kvmhost_state_reload"]
+
+    plot_kvm_counters([halt_wakeup, host_state_reload],
+            ["halt_wakeup", "host_state_reload"], "KVM misc")
+
+def plot_kvm_hypercalls(data):
+    hypercalls = data["kvmhypercalls"]
+
+    plot_kvm_counters([hypercalls],
+            ["hypercalls"], "KVM hypercalls")
+
+def plot_kvm_emulations(data):
+    insn_emulation = data["kvminsn_emulation"]
+
+    plot_kvm_counters([insn_emulation], ["insn_emulation"],
+            "KVM insn emulation")
+
+def plot(input, output):
+    data = np.genfromtxt(input, dtype=None, delimiter=',', names=True,skip_footer=1)
+
+    font = {'size': 6}
+    plt.rc('font', **font)
+
+    plt.figure(1)
+
+    plt.subplot(3, 2, 1)
+    plot_kvm_exits(data)
+
+    plt.subplot(3, 2, 2)
+    plot_kvm_tlbflush(data)
+
+    plt.subplot(3, 2, 3)
+    plot_kvm_irqs(data)
+
+    plt.subplot(3, 2, 4)
+    plot_kvm_misc_stats(data)
+
+    plt.subplot(3, 2, 5)
+    plot_kvm_hypercalls(data)
+
+    plt.subplot(3, 2, 6)
+    plot_kvm_emulations(data)
+
+    plt.savefig(output, dpi=200, format='pdf')
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(prog='virt-plot')
+    parser.add_argument('input')
+    args = parser.parse_args()
+    output = os.path.splitext(args.input)[0] + ".pdf"
+    plot(args.input, output)

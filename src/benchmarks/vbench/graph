@@ -1,0 +1,188 @@
+#!/usr/bin/env python2
+
+from mparts.analyze import *
+import mparts.table as table
+import mparts.graph as graph
+
+import sys, os
+import optparse
+
+SCALE = {"MakeKernel" : (("hour", 60*60), ("secs", 1)),
+         "GmakeLoad" : (("hour", 60*60), ("secs", 1)),
+         "GmakeDockerLoad" : (("hour", 60*60), ("secs", 1)),
+         "GmakeFakerootLoad" : (("hour", 60*60), ("secs", 1)),
+         "GmakeQemuLoad" : (("hour", 60*60), ("secs", 1)),
+
+         "Smtpbm" : (("sec", 1), ("microsecs", 1000*1000)),
+         "EximLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+         "EximQemuLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+
+         "Mkdb" : (("hour", 60*60), ("secs", 1)),
+         "PsearchyLoad" : (("hour", 60*60), ("secs", 1)),
+         "PsearchyQemuLoad" : (("hour", 60*60), ("secs", 1)),
+
+         "Wrmem" : (("hour", 60*60), ("secs", 1)),
+         "MetisLoad" : (("hour", 60*60), ("secs", 1)),
+         "MetisQemuLoad" : (("hour", 60*60), ("secs", 1)),
+
+         "PGLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+         "PostgresLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+         "PostgresQemuLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+
+         "MemcachedLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+         "MemcachedQemuLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+
+         "RocksDBLoad" : (("sec", 1), ("microsecs", 1000*1000)),
+         }
+
+def parseArgs(args):
+    usage = """\
+Usage: %prog [options] dirs...
+
+Recursively find all benchmark data point directories under the
+directories given as arguments and graph those data points.  Separate
+benchmark types will be plotted in separate graphs."""
+
+    parser = optparse.OptionParser(usage = usage)
+    parser.add_option("-d", "--data", dest = "mode", action="store_const",
+                      const = "data", default = "graph",
+                      help = "emit only data tables")
+    parser.add_option("-p", "--strip", dest = "strip", type = "int",
+                      default = 0, help = "strip NUM path elements from key",
+                      metavar = "NUM")
+    for time in ["user", "sys", "idle"]:
+        parser.add_option("--no-" + time, action = "store_false",
+                          dest = time, default = True,
+                          help = "don't display %s time" % time)
+    def noTimes(option, opt, value, parser):
+        parser.values.user = parser.values.sys = parser.values.idle = False
+    parser.add_option("--no-times", action = "callback",
+                      callback = noTimes,
+                      help = "don't display any times")
+    parser.add_option("--y2-max", dest = "y2Max", type = "float",
+                      default = None, help = "set upper limit of y2 to MAX",
+                      metavar = "MAX")
+
+    if not len(args):
+        parser.error("Arguments expected")
+    return parser.parse_args(args)
+
+def resultsTable(exps):
+    out = []
+    haveTimes = False
+
+    for exp in exps:
+        best = None
+        for rp in filterInfo(exp.info, className = "ResultsProvider"):
+            infoTup = (os.path.relpath(exp.path), rp["classNames"][0])
+            result = rp["result"]/rp["real"]
+            resultTup = (rp["cores"], result, rp["units"] + "/sec",
+                         rp["real"])
+            if "time.real" in rp:
+                timesTup = (tuple(sum(rp.get("time." + name, 0)
+                                     for name in group) / rp["result"]
+                                 for group in
+                                 [["user", "nice"],
+                                  ["sys", "irq", "softirq"],
+                                  ["idle", "iowait"]]) +
+                            (rp["unit"],))
+                haveTimes = True
+            else:
+                timesTup = ()
+                haveTimes = False
+            trial = infoTup + resultTup + timesTup
+            const = infoTup + (rp["cores"], rp["units"], haveTimes)
+            if best != None and best[2] != const:
+                raise ValueError(
+                    "Trials disagree on constants:\n%r\n versus\n%r" %
+                    (best[2], const))
+            if best == None or result > best[0]:
+                best = (result, trial, const)
+        if best == None:
+            raise ValueError("No ResultsProviders in %r" % exp)
+        out.append(best[1])
+
+    cols = ["path", "className", "cores", "result", "units", "real"]
+    if haveTimes:
+        cols.extend(["user", "sys", "idle", "timeUnits"])
+    desc = table.TableDesc(*cols)
+    return table.Table.fromIterable(out, desc)
+
+opts, paths = parseArgs(sys.argv[1:])
+
+graphs = {}
+for name, exps in series(*paths):
+    name = name.split("/", opts.strip)[-1]
+
+    tab = resultsTable(exps)
+    fixed = the(tab.project("className", "units"))
+
+    if "user" in tab.desc:
+        tunits = the(tab.project("timeUnits")).timeUnits
+        rest = (("user/"+tunits, "user"), ("sys/"+tunits, "sys"),
+                ("idle/"+tunits, "idle"))
+    else:
+        rest = ()
+    toShow = tab.project("path", #("path", lambda row: row.path.split("/", 2)[-1]),
+                         "cores", (None, "className"),
+                         (fixed.units, "result"), (None, "units"),
+                         "real", *rest)
+    print "# %s" % name
+    print toShow.renderText()
+    print
+    print
+
+    if opts.mode == "data":
+        continue
+
+    scaleRes, scaleTime = SCALE.get(fixed.className, (("sec", 1), ("secs", 1)))
+
+    g, idx = graphs.get(fixed.className, (None, 0))
+    if not g:
+        g = graph.Gnuplot(pdf="%s.pdf" % fixed.className, archive=True)
+        g.title = fixed.className
+        g.xlabel = "cores"
+        g.ylabel = fixed.units.replace("/sec", "/%s" % scaleRes[0])
+        g.yrange = "[0:*]"
+        if "user" in tab.desc and (opts.user or opts.sys or opts.idle):
+            g.y2label = "CPU time (%s/%s)" % (scaleTime[0], tunits)
+            g.y2tics = ""
+            if opts.y2Max != None:
+                g.y2range = "[0:%g]" % opts.y2Max
+            g.ytics = "nomirror"
+
+    # # Differential curve
+    # pres = pcores = 0
+    # curve = []
+    # for (cores, res) in tab.project("cores", "result"):
+    #     res *= cores
+    #     curve.append((cores, (res - pres) / (cores - pcores)))
+    #     pres, pcores = res, cores
+
+    # # Total throughput curve
+    # curve = []
+    # for (cores, res) in tab.project("cores", "result"):
+    #     curve.append((cores, res * cores))
+
+    # Per-core throughput curve
+    projRes = lambda row: row.result * scaleRes[1]
+    curve = tab.project("cores", ("result", projRes))
+
+    color = 1
+    g.addData(curve, with_ = "lines", title = name, linecolor = color)
+    if "user" in tab.desc:
+        for n, t in [(6, "user"),  # Circle for wx terminal
+                     (8, "sys"),   # Triangle
+                     (2, "idle")]: # Cross
+            if not getattr(opts, t):
+                continue
+            projTime = lambda row: getattr(row, t) * scaleTime[1]
+            color += 1
+            g.addData(tab.project("cores", (t, projTime)), axis = "x1y2",
+                      with_ = "linespoints", title = name + " " + t,
+                      linecolor = color, pointtype = n)
+
+    graphs[fixed.className] = (g, idx+1)
+
+for g, _ in graphs.itervalues():
+    g.plot()

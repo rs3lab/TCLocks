@@ -1,0 +1,12 @@
+
+*.pyc
+mparts/*.pyc
+results/*
+support/*.pyc
+tmp
+tags
+*.swp
+sanity/*
+.tmp
+.tmp/*
+metis/data.tar.gz

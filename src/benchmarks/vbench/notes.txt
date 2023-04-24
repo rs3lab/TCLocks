@@ -1,0 +1,31 @@
+Steps to run psearchy :
+
+0. cd into the `vbench` directory
+1. sudo ./mkmounts tmpfs-separate
+2. open config.py and search for variable `cores`
+2a. It is a list for the number of cores to run on
+2b. Modify as per requirement
+3. sudo ./config.py psearchy
+4. This will save all the numbers in results/yyyymmdd-time/benchmark-psearchy
+5. To generate the data run : sudo ./graph results/< ... >/benchmark-psearchy
+6. This will generate the .dat file and .pdf in /tmp/gnuplotXXXXXX/...
+
+NOTE : Everything is owned by root so if you want to take it out of the vm then chown to ubuntu
+
+ALTERNATE : You can run a single core count config by using sudo ./config.py -d -c NUM psearchy
+
+Steps to run gmake :
+
+0. cd into the `vbench` directory
+1. sudo ./mkmounts tmpfs-separate
+2. open config.py and search for variable `cores`
+2a. It is a list for the number of cores to run on
+2b. Modify as per requirement
+3. sudo ./config.py gmake
+4. This will save all the numbers in results/yyyymmdd-time/benchmark-gmake
+5. To generate the data run : sudo ./graph results/< ... >/benchmark-gmake
+6. This will generate the .dat file and .pdf in /tmp/gnuplotXXXXXX/...
+
+NOTE : Everything is owned by root so if you want to take it out of the vm then chown to ubuntu
+
+ALTERNATE : You can run a single core count config by using sudo ./config.py -d -c NUM gmake
