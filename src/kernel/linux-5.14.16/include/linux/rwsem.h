@@ -9,7 +9,6 @@
 #define _LINUX_RWSEM_H
 
 #include <linux/linkage.h>
-#include <linux/aqm.h>
 
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -17,31 +16,9 @@
 #include <linux/spinlock.h>
 #include <linux/atomic.h>
 #include <linux/err.h>
-#include <linux/mutex.h>
-
-//#define BRAVO 1
-
-/*
- * Writer states & reader shift and bias.
- */
-#define _KOMB_RWSEM_W_LOCKED 0xff /* A writer holds the lock */
-#define _KOMB_RWSEM_W_COMBINER 0x70 /* A combiner holds the lock */
-#define _KOMB_RWSEM_W_OOO 0x7f /* A combiner holds the lock */
-#define _KOMB_RWSEM_W_WMASK 0x1ff /* Writer mask		   */
-#define _KOMB_RWSEM_W_WAITING 0x100 /* Writer waiting */
-#define _KOMB_RWSEM_R_SHIFT 9 /* Reader count shift	   */
-#define _KOMB_RWSEM_R_BIAS (1U << _KOMB_RWSEM_R_SHIFT)
-
-#define _Q_COMPLETED_OFFSET (_Q_LOCKED_OFFSET + _Q_LOCKED_BITS)
-#define _Q_COMPLETED_BITS 8
-#define _Q_COMPLETED_MASK _Q_SET_MASK(COMPLETED)
-
-#define NUM_SLOT (1024)
-#define TABLE_SIZE ((NUM_SLOT))
-#define V(i) ((i))
-
-#define CHECK_FOR_BIAS 16
-#define MULTIPLIER 9
+#ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+#include <linux/osq_lock.h>
+#endif
 
 /*
  * For an uncontended rwsem, count and owner are the only fields a task
@@ -56,63 +33,80 @@
  * cacheline bouncing problem.
  */
 struct rw_semaphore {
-	union {
-		atomic_long_t cnts;
-		struct {
-			u8 wlocked;
-			u8 rcount[7];
-		};
-	};
-	char dummy1[128];
-	char dummy2[128];
-	struct aqm_mutex reader_wait_lock;
-	char dummy3[128];
-	struct mutex_node *writer_tail;
-	char dummy4[128];
-	struct mutex_node *komb_waiter_rsp_ptr;
-	struct mutex_node *komb_waiter_node;
-#ifdef BRAVO
-	int rbias;
-	u64 inhibit_until;
+	atomic_long_t count;
+	/*
+	 * Write owner or one of the read owners as well flags regarding
+	 * the current state of the rwsem. Can be used as a speculative
+	 * check to see if the write owner is running on the cpu.
+	 */
+	atomic_long_t owner;
+#ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+	struct optimistic_spin_queue osq; /* spinner MCS lock */
+#endif
+	raw_spinlock_t wait_lock;
+	struct list_head wait_list;
+#ifdef CONFIG_DEBUG_RWSEMS
+	void *magic;
+#endif
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	struct lockdep_map	dep_map;
 #endif
 };
 
 /* In all implementations count != 0 means locked */
 static inline int rwsem_is_locked(struct rw_semaphore *sem)
 {
-	return atomic_long_read(&sem->cnts) != 0;
+	return atomic_long_read(&sem->count) != 0;
 }
 
-#define RWSEM_UNLOCKED_VALUE 0L
+#define RWSEM_UNLOCKED_VALUE		0L
+#define __RWSEM_COUNT_INIT(name)	.count = ATOMIC_LONG_INIT(RWSEM_UNLOCKED_VALUE)
 
 /* Common initializer macros and functions */
 
-#define __RWSEM_DEP_MAP_INIT(lockname)
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+# define __RWSEM_DEP_MAP_INIT(lockname)			\
+	.dep_map = {					\
+		.name = #lockname,			\
+		.wait_type_inner = LD_WAIT_SLEEP,	\
+	},
+#else
+# define __RWSEM_DEP_MAP_INIT(lockname)
+#endif
 
-#define __RWSEM_DEBUG_INIT(lockname)
+#ifdef CONFIG_DEBUG_RWSEMS
+# define __RWSEM_DEBUG_INIT(lockname) .magic = &lockname,
+#else
+# define __RWSEM_DEBUG_INIT(lockname)
+#endif
 
+#ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+#define __RWSEM_OPT_INIT(lockname) .osq = OSQ_LOCK_UNLOCKED,
+#else
 #define __RWSEM_OPT_INIT(lockname)
+#endif
 
-#define __RWSEM_INITIALIZER(lockname)                                          \
-	{                                                                      \
-		.cnts = ATOMIC_LONG_INIT(0),                                   \
-		.reader_wait_lock.val = ATOMIC_INIT(0),                        \
-		.reader_wait_lock.tail = NULL, .writer_tail = NULL             \
-	}
+#define __RWSEM_INITIALIZER(name)				\
+	{ __RWSEM_COUNT_INIT(name),				\
+	  .owner = ATOMIC_LONG_INIT(0),				\
+	  __RWSEM_OPT_INIT(name)				\
+	  .wait_lock = __RAW_SPIN_LOCK_UNLOCKED(name.wait_lock),\
+	  .wait_list = LIST_HEAD_INIT((name).wait_list),	\
+	  __RWSEM_DEBUG_INIT(name)				\
+	  __RWSEM_DEP_MAP_INIT(name) }
 
-#define DECLARE_RWSEM(name) struct rw_semaphore name = __RWSEM_INITIALIZER(name)
+#define DECLARE_RWSEM(name) \
+	struct rw_semaphore name = __RWSEM_INITIALIZER(name)
 
 extern void __init_rwsem(struct rw_semaphore *sem, const char *name,
 			 struct lock_class_key *key);
 
-#define init_rwsem(sem)                                                        \
-	do {                                                                   \
-		static struct lock_class_key __key;                            \
-                                                                               \
-		__init_rwsem((sem), #sem, &__key);                             \
-	} while (0)
-
-extern void komb_rwsem_init(void);
+#define init_rwsem(sem)						\
+do {								\
+	static struct lock_class_key __key;			\
+								\
+	__init_rwsem((sem), #sem, &__key);			\
+} while (0)
 
 /*
  * This is the same regardless of which rwsem implementation that is being used.
@@ -122,7 +116,7 @@ extern void komb_rwsem_init(void);
  */
 static inline int rwsem_is_contended(struct rw_semaphore *sem)
 {
-	return (sem->writer_tail != NULL);
+	return !list_empty(&sem->wait_list);
 }
 
 /*
@@ -163,12 +157,48 @@ extern void up_write(struct rw_semaphore *sem);
  */
 extern void downgrade_write(struct rw_semaphore *sem);
 
-#define down_read_nested(sem, subclass) down_read(sem)
-#define down_read_killable_nested(sem, subclass) down_read_killable(sem)
-#define down_write_nest_lock(sem, nest_lock) down_write(sem)
-#define down_write_nested(sem, subclass) down_write(sem)
-#define down_write_killable_nested(sem, subclass) down_write_killable(sem)
-#define down_read_non_owner(sem) down_read(sem)
-#define up_read_non_owner(sem) up_read(sem)
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+/*
+ * nested locking. NOTE: rwsems are not allowed to recurse
+ * (which occurs if the same task tries to acquire the same
+ * lock instance multiple times), but multiple locks of the
+ * same lock class might be taken, if the order of the locks
+ * is always the same. This ordering rule can be expressed
+ * to lockdep via the _nested() APIs, but enumerating the
+ * subclasses that are used. (If the nesting relationship is
+ * static then another method for expressing nested locking is
+ * the explicit definition of lock class keys and the use of
+ * lockdep_set_class() at lock initialization time.
+ * See Documentation/locking/lockdep-design.rst for more details.)
+ */
+extern void down_read_nested(struct rw_semaphore *sem, int subclass);
+extern int __must_check down_read_killable_nested(struct rw_semaphore *sem, int subclass);
+extern void down_write_nested(struct rw_semaphore *sem, int subclass);
+extern int down_write_killable_nested(struct rw_semaphore *sem, int subclass);
+extern void _down_write_nest_lock(struct rw_semaphore *sem, struct lockdep_map *nest_lock);
+
+# define down_write_nest_lock(sem, nest_lock)			\
+do {								\
+	typecheck(struct lockdep_map *, &(nest_lock)->dep_map);	\
+	_down_write_nest_lock(sem, &(nest_lock)->dep_map);	\
+} while (0);
+
+/*
+ * Take/release a lock when not the owner will release it.
+ *
+ * [ This API should be avoided as much as possible - the
+ *   proper abstraction for this case is completions. ]
+ */
+extern void down_read_non_owner(struct rw_semaphore *sem);
+extern void up_read_non_owner(struct rw_semaphore *sem);
+#else
+# define down_read_nested(sem, subclass)		down_read(sem)
+# define down_read_killable_nested(sem, subclass)	down_read_killable(sem)
+# define down_write_nest_lock(sem, nest_lock)	down_write(sem)
+# define down_write_nested(sem, subclass)	down_write(sem)
+# define down_write_killable_nested(sem, subclass)	down_write_killable(sem)
+# define down_read_non_owner(sem)		down_read(sem)
+# define up_read_non_owner(sem)			up_read(sem)
+#endif
 
 #endif /* _LINUX_RWSEM_H */

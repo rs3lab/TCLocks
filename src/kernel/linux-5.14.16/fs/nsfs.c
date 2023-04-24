@@ -16,9 +16,10 @@
 
 static struct vfsmount *nsfs_mnt;
 
-static long ns_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg);
+static long ns_ioctl(struct file *filp, unsigned int ioctl,
+			unsigned long arg);
 static const struct file_operations ns_file_operations = {
-	.llseek = no_llseek,
+	.llseek		= no_llseek,
 	.unlocked_ioctl = ns_ioctl,
 };
 
@@ -27,8 +28,8 @@ static char *ns_dname(struct dentry *dentry, char *buffer, int buflen)
 	struct inode *inode = d_inode(dentry);
 	const struct proc_ns_operations *ns_ops = dentry->d_fsdata;
 
-	return dynamic_dname(dentry, buffer, buflen, "%s:[%lu]", ns_ops->name,
-			     inode->i_ino);
+	return dynamic_dname(dentry, buffer, buflen, "%s:[%lu]",
+		ns_ops->name, inode->i_ino);
 }
 
 static void ns_prune_dentry(struct dentry *dentry)
@@ -40,10 +41,11 @@ static void ns_prune_dentry(struct dentry *dentry)
 	}
 }
 
-const struct dentry_operations ns_dentry_operations = {
-	.d_prune = ns_prune_dentry,
-	.d_delete = always_delete_dentry,
-	.d_dname = ns_dname,
+const struct dentry_operations ns_dentry_operations =
+{
+	.d_prune	= ns_prune_dentry,
+	.d_delete	= always_delete_dentry,
+	.d_dname	= ns_dname,
 };
 
 static void nsfs_evict(struct inode *inode)
@@ -65,7 +67,7 @@ static int __ns_get_path(struct path *path, struct ns_common *ns)
 	if (!d)
 		goto slow;
 	dentry = (struct dentry *)d;
-	if (!komb_lockref_get_not_dead(&dentry->d_lockref))
+	if (!lockref_get_not_dead(&dentry->d_lockref))
 		goto slow;
 	rcu_read_unlock();
 	ns->ops->put(ns);
@@ -96,7 +98,7 @@ slow:
 	dentry->d_fsdata = (void *)ns->ops;
 	d = atomic_long_cmpxchg(&ns->stashed, 0, (unsigned long)dentry);
 	if (d) {
-		d_delete(dentry); /* make sure ->d_prune() does nothing */
+		d_delete(dentry);	/* make sure ->d_prune() does nothing */
 		dput(dentry);
 		cpu_relax();
 		return -EAGAIN;
@@ -105,7 +107,7 @@ slow:
 }
 
 int ns_get_path_cb(struct path *path, ns_get_path_helper_t *ns_get_cb,
-		   void *private_data)
+		     void *private_data)
 {
 	int ret;
 
@@ -132,18 +134,18 @@ static struct ns_common *ns_get_path_task(void *private_data)
 }
 
 int ns_get_path(struct path *path, struct task_struct *task,
-		const struct proc_ns_operations *ns_ops)
+		  const struct proc_ns_operations *ns_ops)
 {
 	struct ns_get_path_task_args args = {
-		.ns_ops = ns_ops,
-		.task = task,
+		.ns_ops	= ns_ops,
+		.task	= task,
 	};
 
 	return ns_get_path_cb(path, ns_get_path_task, &args);
 }
 
 int open_related_ns(struct ns_common *ns,
-		    struct ns_common *(*get_ns)(struct ns_common *ns))
+		   struct ns_common *(*get_ns)(struct ns_common *ns))
 {
 	struct path path = {};
 	struct file *f;
@@ -183,7 +185,8 @@ int open_related_ns(struct ns_common *ns,
 }
 EXPORT_SYMBOL_GPL(open_related_ns);
 
-static long ns_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
+static long ns_ioctl(struct file *filp, unsigned int ioctl,
+			unsigned long arg)
 {
 	struct user_namespace *user_ns;
 	struct ns_common *ns = get_proc_ns(file_inode(filp));
@@ -203,7 +206,7 @@ static long ns_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		if (ns->ops->type != CLONE_NEWUSER)
 			return -EINVAL;
 		user_ns = container_of(ns, struct user_namespace, ns);
-		argp = (uid_t __user *)arg;
+		argp = (uid_t __user *) arg;
 		uid = from_kuid_munged(current_user_ns(), user_ns->owner);
 		return put_user(uid, argp);
 	default:
@@ -212,14 +215,14 @@ static long ns_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 }
 
 int ns_get_name(char *buf, size_t size, struct task_struct *task,
-		const struct proc_ns_operations *ns_ops)
+			const struct proc_ns_operations *ns_ops)
 {
 	struct ns_common *ns;
 	int res = -ENOENT;
 	const char *name;
 	ns = ns_ops->get(task);
 	if (ns) {
-		name = ns_ops->real_ns_name ?: ns_ops->name;
+		name = ns_ops->real_ns_name ? : ns_ops->name;
 		res = snprintf(buf, size, "%s:[%u]", name, ns->inum);
 		ns_ops->put(ns);
 	}
@@ -261,6 +264,7 @@ bool ns_match(const struct ns_common *ns, dev_t dev, ino_t ino)
 {
 	return (ns->inum == ino) && (nsfs_mnt->mnt_sb->s_dev == dev);
 }
+
 
 static int nsfs_show_path(struct seq_file *seq, struct dentry *dentry)
 {

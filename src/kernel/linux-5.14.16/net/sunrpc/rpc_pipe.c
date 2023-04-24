@@ -33,8 +33,6 @@
 #include <linux/nsproxy.h>
 #include <linux/notifier.h>
 
-#include <linux/spinlock.h>
-
 #include "netns.h"
 #include "sunrpc.h"
 

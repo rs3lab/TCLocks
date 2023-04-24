@@ -17,7 +17,6 @@
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
-#include <linux/spinlock.h>
 
 struct configfs_fragment {
 	atomic_t frag_count;

@@ -21,15 +21,15 @@
 #include <linux/rcupdate.h>
 #include <linux/close_range.h>
 #include <net/sock.h>
-#include <linux/spinlock.h>
+
 #include "internal.h"
 
-unsigned int sysctl_nr_open __read_mostly = 1024 * 1024;
+unsigned int sysctl_nr_open __read_mostly = 1024*1024;
 unsigned int sysctl_nr_open_min = BITS_PER_LONG;
 /* our min() is unusable in constant expressions ;-/ */
 #define __const_min(x, y) ((x) < (y) ? (x) : (y))
 unsigned int sysctl_nr_open_max =
-	__const_min(INT_MAX, ~(size_t)0 / sizeof(void *)) & -BITS_PER_LONG;
+	__const_min(INT_MAX, ~(size_t)0/sizeof(void *)) & -BITS_PER_LONG;
 
 static void __free_fdtable(struct fdtable *fdt)
 {
@@ -43,8 +43,8 @@ static void free_fdtable_rcu(struct rcu_head *rcu)
 	__free_fdtable(container_of(rcu, struct fdtable, rcu));
 }
 
-#define BITBIT_NR(nr) BITS_TO_LONGS(BITS_TO_LONGS(nr))
-#define BITBIT_SIZE(nr) (BITBIT_NR(nr) * sizeof(long))
+#define BITBIT_NR(nr)	BITS_TO_LONGS(BITS_TO_LONGS(nr))
+#define BITBIT_SIZE(nr)	(BITBIT_NR(nr) * sizeof(long))
 
 /*
  * Copy 'count' fd bits from the old table to the new table and clear the extra
@@ -87,7 +87,7 @@ static void copy_fdtable(struct fdtable *nfdt, struct fdtable *ofdt)
 	copy_fd_bitmaps(nfdt, ofdt, ofdt->max_fds);
 }
 
-static struct fdtable *alloc_fdtable(unsigned int nr)
+static struct fdtable * alloc_fdtable(unsigned int nr)
 {
 	struct fdtable *fdt;
 	void *data;
@@ -122,9 +122,9 @@ static struct fdtable *alloc_fdtable(unsigned int nr)
 		goto out_fdt;
 	fdt->fd = data;
 
-	data = kvmalloc(max_t(size_t, 2 * nr / BITS_PER_BYTE + BITBIT_SIZE(nr),
-			      L1_CACHE_BYTES),
-			GFP_KERNEL_ACCOUNT);
+	data = kvmalloc(max_t(size_t,
+				 2 * nr / BITS_PER_BYTE + BITBIT_SIZE(nr), L1_CACHE_BYTES),
+				 GFP_KERNEL_ACCOUNT);
 	if (!data)
 		goto out_arr;
 	fdt->open_fds = data;
@@ -151,7 +151,8 @@ out:
  * The files->file_lock should be held on entry, and will be held on exit.
  */
 static int expand_fdtable(struct files_struct *files, unsigned int nr)
-	__releases(files->file_lock) __acquires(files->file_lock)
+	__releases(files->file_lock)
+	__acquires(files->file_lock)
 {
 	struct fdtable *new_fdt, *cur_fdt;
 
@@ -195,7 +196,8 @@ static int expand_fdtable(struct files_struct *files, unsigned int nr)
  * The files->file_lock should be held on entry, and will be held on exit.
  */
 static int expand_files(struct files_struct *files, unsigned int nr)
-	__releases(files->file_lock) __acquires(files->file_lock)
+	__releases(files->file_lock)
+	__acquires(files->file_lock)
 {
 	struct fdtable *fdt;
 	int expanded = 0;
@@ -259,7 +261,7 @@ static unsigned int count_open_files(struct fdtable *fdt)
 	unsigned int i;
 
 	/* Find the last open fd */
-	for (i = size / BITS_PER_LONG; i > 0;) {
+	for (i = size / BITS_PER_LONG; i > 0; ) {
 		if (fdt->open_fds[--i])
 			break;
 	}
@@ -282,8 +284,7 @@ static unsigned int sane_fdtable_size(struct fdtable *fdt, unsigned int max_fds)
  * passed in files structure.
  * errorp will be valid only when the returned files_struct is NULL.
  */
-struct files_struct *dup_fd(struct files_struct *oldf, unsigned int max_fds,
-			    int *errorp)
+struct files_struct *dup_fd(struct files_struct *oldf, unsigned int max_fds, int *errorp)
 {
 	struct files_struct *newf;
 	struct file **old_fds, **new_fds;
@@ -367,8 +368,7 @@ struct files_struct *dup_fd(struct files_struct *oldf, unsigned int max_fds,
 	spin_unlock(&oldf->file_lock);
 
 	/* clear the remainder */
-	memset(new_fds, 0,
-	       (new_fdt->max_fds - open_files) * sizeof(struct file *));
+	memset(new_fds, 0, (new_fdt->max_fds - open_files) * sizeof(struct file *));
 
 	rcu_assign_pointer(newf->fdt, new_fdt);
 
@@ -380,7 +380,7 @@ out:
 	return NULL;
 }
 
-static struct fdtable *close_files(struct files_struct *files)
+static struct fdtable *close_files(struct files_struct * files)
 {
 	/*
 	 * It is safe to dereference the fd table without RCU or
@@ -398,7 +398,7 @@ static struct fdtable *close_files(struct files_struct *files)
 		set = fdt->open_fds[j++];
 		while (set) {
 			if (set & 1) {
-				struct file *file = xchg(&fdt->fd[i], NULL);
+				struct file * file = xchg(&fdt->fd[i], NULL);
 				if (file) {
 					filp_close(file, files);
 					cond_resched();
@@ -426,7 +426,7 @@ void put_files_struct(struct files_struct *files)
 
 void exit_files(struct task_struct *tsk)
 {
-	struct files_struct *files = tsk->files;
+	struct files_struct * files = tsk->files;
 
 	if (files) {
 		task_lock(tsk);
@@ -446,7 +446,7 @@ struct files_struct init_files = {
 		.open_fds	= init_files.open_fds_init,
 		.full_fds_bits	= init_files.full_fds_bits_init,
 	},
-	.file_lock = __SPIN_LOCK_UNLOCKED(init_files.file_lock),
+	.file_lock	= __SPIN_LOCK_UNLOCKED(init_files.file_lock),
 	.resize_wait	= __WAIT_QUEUE_HEAD_INITIALIZER(init_files.resize_wait),
 };
 
@@ -456,8 +456,7 @@ static unsigned int find_next_fd(struct fdtable *fdt, unsigned int start)
 	unsigned int maxbit = maxfd / BITS_PER_LONG;
 	unsigned int bitbit = start / BITS_PER_LONG;
 
-	bitbit = find_next_zero_bit(fdt->full_fds_bits, maxbit, bitbit) *
-		 BITS_PER_LONG;
+	bitbit = find_next_zero_bit(fdt->full_fds_bits, maxbit, bitbit) * BITS_PER_LONG;
 	if (bitbit > maxfd)
 		return maxfd;
 	if (bitbit > start)
@@ -797,7 +796,7 @@ void do_close_on_exec(struct files_struct *files)
 
 	/* exec unshares first */
 	spin_lock(&files->file_lock);
-	for (i = 0;; i++) {
+	for (i = 0; ; i++) {
 		unsigned long set;
 		unsigned fd = i * BITS_PER_LONG;
 		fdt = files_fdtable(files);
@@ -807,7 +806,7 @@ void do_close_on_exec(struct files_struct *files)
 		if (!set)
 			continue;
 		fdt->close_on_exec[i] = 0;
-		for (; set; fd++, set >>= 1) {
+		for ( ; set ; fd++, set >>= 1) {
 			struct file *file;
 			if (!(set & 1))
 				continue;
@@ -821,6 +820,7 @@ void do_close_on_exec(struct files_struct *files)
 			cond_resched();
 			spin_lock(&files->file_lock);
 		}
+
 	}
 	spin_unlock(&files->file_lock);
 }
@@ -898,8 +898,7 @@ struct file *task_lookup_fd_rcu(struct task_struct *task, unsigned int fd)
 	return file;
 }
 
-struct file *task_lookup_next_fd_rcu(struct task_struct *task,
-				     unsigned int *ret_fd)
+struct file *task_lookup_next_fd_rcu(struct task_struct *task, unsigned int *ret_fd)
 {
 	/* Must be called with rcu_read_lock held */
 	struct files_struct *files;
@@ -1014,8 +1013,9 @@ bool get_close_on_exec(unsigned int fd)
 	return res;
 }
 
-static int do_dup2(struct files_struct *files, struct file *file, unsigned fd,
-		   unsigned flags) __releases(&files->file_lock)
+static int do_dup2(struct files_struct *files,
+	struct file *file, unsigned fd, unsigned flags)
+__releases(&files->file_lock)
 {
 	struct file *tofree;
 	struct fdtable *fdt;
@@ -1218,7 +1218,8 @@ int f_dupfd(unsigned int from, struct file *file, unsigned flags)
 }
 
 int iterate_fd(struct files_struct *files, unsigned n,
-	       int (*f)(const void *, struct file *, unsigned), const void *p)
+		int (*f)(const void *, struct file *, unsigned),
+		const void *p)
 {
 	struct fdtable *fdt;
 	int res = 0;

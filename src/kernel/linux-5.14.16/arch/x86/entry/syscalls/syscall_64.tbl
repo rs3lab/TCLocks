@@ -369,8 +369,7 @@
 445	common	landlock_add_rule	sys_landlock_add_rule
 446	common	landlock_restrict_self	sys_landlock_restrict_self
 447	common	memfd_secret		sys_memfd_secret
-448 common	komb_stats		sys_komb_stats
-449	common	komb_clear_stats	sys_komb_clear_stats
+448 common	print_ooo_stats		sys_print_ooo_stats 
 
 #
 # Due to a historical design error, certain syscalls are numbered differently

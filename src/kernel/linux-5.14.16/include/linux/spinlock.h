@@ -349,23 +349,81 @@ do {						\
 
 #endif
 
+DECLARE_PER_CPU(spinlock_t *[1024], lock_order_arr);
+DECLARE_PER_CPU(int, lock_order_idx);
+
+DECLARE_PER_CPU(int, ooo_events);
+DECLARE_PER_CPU(int, not_in_arr_events);
+DECLARE_PER_CPU(int, nested_events);
+
+static __always_inline void record_lock_order(spinlock_t *lock)
+{
+	spinlock_t **loa;
+	int idx;
+
+	migrate_disable();
+	loa = (void *)this_cpu_ptr(&lock_order_arr);
+	idx = __this_cpu_read(lock_order_idx);
+	if (idx == 1024) {
+		BUG_ON(true);
+		goto end;
+	}
+	loa[idx] = lock;
+	__this_cpu_inc(lock_order_idx);
+end:
+	migrate_enable();
+}
+
+static __always_inline void record_unlock_order(spinlock_t *lock)
+{
+	spinlock_t **loa;
+	int idx;
+
+	migrate_disable();
+	loa = (void *)this_cpu_ptr(&lock_order_arr);
+	idx = __this_cpu_read(lock_order_idx) - 1;
+	for (; idx >= 0; idx--) {
+		if (loa[idx] == lock)
+			goto found;
+	}
+	__this_cpu_inc(not_in_arr_events);
+	goto print;
+found:
+	if (idx != __this_cpu_read(lock_order_idx) - 1) {
+		__this_cpu_write(lock_order_idx, idx);
+		__this_cpu_inc(ooo_events);
+	} else {
+		__this_cpu_dec(lock_order_idx);
+	}
+print:
+	//printk("STATS: ooo: %d, not_in_arr: %d\n",
+	//       atomic_read(&ooo_events), atomic_read(&not_in_arr_events));
+        BUG_ON(__this_cpu_read(lock_order_idx) < 0);
+	migrate_enable();
+}
+
 static __always_inline void spin_lock(spinlock_t *lock)
 {
 	raw_spin_lock(&lock->rlock);
+	record_lock_order(lock);
 }
 
 static __always_inline void spin_lock_bh(spinlock_t *lock)
 {
 	raw_spin_lock_bh(&lock->rlock);
+	record_lock_order(lock);
 }
 
 static __always_inline int spin_trylock(spinlock_t *lock)
 {
-	return raw_spin_trylock(&lock->rlock);
+	int val = raw_spin_trylock(&lock->rlock);
+    if(val == 1)
+	    record_lock_order(lock);
+    return val;
 }
 
 #define spin_lock_nested(lock, subclass)			\
-do {								\
+do {			__this_cpu_inc(nested_events);					\
 	raw_spin_lock_nested(spinlock_check(lock), subclass);	\
 } while (0)
 
@@ -377,6 +435,7 @@ do {									\
 static __always_inline void spin_lock_irq(spinlock_t *lock)
 {
 	raw_spin_lock_irq(&lock->rlock);
+	record_lock_order(lock);
 }
 
 #define spin_lock_irqsave(lock, flags)				\
@@ -385,38 +444,48 @@ do {								\
 } while (0)
 
 #define spin_lock_irqsave_nested(lock, flags, subclass)			\
-do {									\
+do {					__this_cpu_inc(nested_events);				\
 	raw_spin_lock_irqsave_nested(spinlock_check(lock), flags, subclass); \
 } while (0)
 
 static __always_inline void spin_unlock(spinlock_t *lock)
 {
+    record_unlock_order(lock);
 	raw_spin_unlock(&lock->rlock);
 }
 
 static __always_inline void spin_unlock_bh(spinlock_t *lock)
 {
+    record_unlock_order(lock);
 	raw_spin_unlock_bh(&lock->rlock);
 }
 
 static __always_inline void spin_unlock_irq(spinlock_t *lock)
 {
+    record_unlock_order(lock);
 	raw_spin_unlock_irq(&lock->rlock);
 }
 
 static __always_inline void spin_unlock_irqrestore(spinlock_t *lock, unsigned long flags)
 {
+    record_unlock_order(lock);
 	raw_spin_unlock_irqrestore(&lock->rlock, flags);
 }
 
 static __always_inline int spin_trylock_bh(spinlock_t *lock)
 {
-	return raw_spin_trylock_bh(&lock->rlock);
+        int val = raw_spin_trylock_bh(&lock->rlock);
+        if(val == 1)
+        record_lock_order(lock);
+        return val;
 }
 
 static __always_inline int spin_trylock_irq(spinlock_t *lock)
 {
-	return raw_spin_trylock_irq(&lock->rlock);
+	int val = raw_spin_trylock_irq(&lock->rlock);
+    if(val == 1)
+            record_lock_order(lock);
+    return val;
 }
 
 #define spin_trylock_irqsave(lock, flags)			\

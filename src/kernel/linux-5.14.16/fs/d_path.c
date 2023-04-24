@@ -12,8 +12,8 @@ struct prepend_buffer {
 	char *buf;
 	int len;
 };
-#define DECLARE_BUFFER(__name, __buf, __len)                                   \
-	struct prepend_buffer __name = { .buf = __buf + __len, .len = __len }
+#define DECLARE_BUFFER(__name, __buf, __len) \
+	struct prepend_buffer __name = {.buf = __buf + __len, .len = __len}
 
 static char *extract_string(struct prepend_buffer *p)
 {
@@ -87,9 +87,9 @@ static int __prepend_path(const struct dentry *dentry, const struct mount *mnt,
 			mnt_ns = READ_ONCE(mnt->mnt_ns);
 			/* open-coded is_mounted() to use local mnt_ns */
 			if (!IS_ERR_OR_NULL(mnt_ns) && !is_anon_ns(mnt_ns))
-				return 1; // absolute root
+				return 1;	// absolute root
 			else
-				return 2; // detached or not attached yet
+				return 2;	// detached or not attached yet
 		}
 
 		if (unlikely(dentry == parent))
@@ -121,7 +121,8 @@ static int __prepend_path(const struct dentry *dentry, const struct mount *mnt,
  * parent pointer references will keep the dentry chain alive as long as no
  * rename operation is performed.
  */
-static int prepend_path(const struct path *path, const struct path *root,
+static int prepend_path(const struct path *path,
+			const struct path *root,
 			struct prepend_buffer *p)
 {
 	unsigned seq, m_seq = 0;
@@ -135,15 +136,15 @@ restart_mnt:
 	rcu_read_lock();
 restart:
 	b = *p;
-	komb_read_seqbegin_or_lock(&rename_lock, &seq);
+	read_seqbegin_or_lock(&rename_lock, &seq);
 	error = __prepend_path(path->dentry, real_mount(path->mnt), root, &b);
 	if (!(seq & 1))
 		rcu_read_unlock();
-	if (komb_need_seqretry(&rename_lock, seq)) {
+	if (need_seqretry(&rename_lock, seq)) {
 		seq = 1;
 		goto restart;
 	}
-	komb_done_seqretry(&rename_lock, seq);
+	done_seqretry(&rename_lock, seq);
 
 	if (!(m_seq & 1))
 		rcu_read_unlock();
@@ -179,8 +180,9 @@ restart:
  *
  * If the path is not reachable from the supplied root, return %NULL.
  */
-char *__d_path(const struct path *path, const struct path *root, char *buf,
-	       int buflen)
+char *__d_path(const struct path *path,
+	       const struct path *root,
+	       char *buf, int buflen)
 {
 	DECLARE_BUFFER(b, buf, buflen);
 
@@ -190,7 +192,8 @@ char *__d_path(const struct path *path, const struct path *root, char *buf,
 	return extract_string(&b);
 }
 
-char *d_absolute_path(const struct path *path, char *buf, int buflen)
+char *d_absolute_path(const struct path *path,
+	       char *buf, int buflen)
 {
 	struct path root = {};
 	DECLARE_BUFFER(b, buf, buflen);
@@ -264,7 +267,7 @@ EXPORT_SYMBOL(d_path);
  * Helper function for dentry_operations.d_dname() members
  */
 char *dynamic_dname(struct dentry *dentry, char *buffer, int buflen,
-		    const char *fmt, ...)
+			const char *fmt, ...)
 {
 	va_list args;
 	char temp[64];
@@ -304,7 +307,7 @@ static char *__dentry_path(const struct dentry *d, struct prepend_buffer *p)
 restart:
 	dentry = d;
 	b = *p;
-	komb_read_seqbegin_or_lock(&rename_lock, &seq);
+	read_seqbegin_or_lock(&rename_lock, &seq);
 	while (!IS_ROOT(dentry)) {
 		const struct dentry *parent = dentry->d_parent;
 
@@ -315,11 +318,11 @@ restart:
 	}
 	if (!(seq & 1))
 		rcu_read_unlock();
-	if (komb_need_seqretry(&rename_lock, seq)) {
+	if (need_seqretry(&rename_lock, seq)) {
 		seq = 1;
 		goto restart;
 	}
-	komb_done_seqretry(&rename_lock, seq);
+	done_seqretry(&rename_lock, seq);
 	if (b.len == p->len)
 		prepend(&b, "/", 1);
 	return extract_string(&b);

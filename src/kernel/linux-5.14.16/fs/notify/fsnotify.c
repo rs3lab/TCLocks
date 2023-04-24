@@ -10,7 +10,6 @@
 #include <linux/module.h>
 #include <linux/mount.h>
 #include <linux/srcu.h>
-#include <linux/spinlock.h>
 
 #include <linux/fsnotify_backend.h>
 #include "fsnotify.h"
@@ -41,14 +40,14 @@ static void fsnotify_unmount_inodes(struct super_block *sb)
 	struct inode *inode, *iput_inode = NULL;
 
 	spin_lock(&sb->s_inode_list_lock);
-	list_for_each_entry (inode, &sb->s_inodes, i_sb_list) {
+	list_for_each_entry(inode, &sb->s_inodes, i_sb_list) {
 		/*
 		 * We cannot __iget() an inode in state I_FREEING,
 		 * I_WILL_FREE, or I_NEW which is fine because by that point
 		 * the inode cannot have any associated watches.
 		 */
 		spin_lock(&inode->i_lock);
-		if (inode->i_state & (I_FREEING | I_WILL_FREE | I_NEW)) {
+		if (inode->i_state & (I_FREEING|I_WILL_FREE|I_NEW)) {
 			spin_unlock(&inode->i_lock);
 			continue;
 		}
@@ -120,24 +119,22 @@ void __fsnotify_update_child_dentry_flags(struct inode *inode)
 	spin_lock(&inode->i_lock);
 	/* run all of the dentries associated with this inode.  Since this is a
 	 * directory, there damn well better only be one item on this list */
-	hlist_for_each_entry (alias, &inode->i_dentry, d_u.d_alias) {
+	hlist_for_each_entry(alias, &inode->i_dentry, d_u.d_alias) {
 		struct dentry *child;
 
 		/* run all of the children of the original inode and fix their
 		 * d_flags to indicate parental interest (their parent is the
 		 * original inode) */
 		spin_lock(&alias->d_lock);
-		list_for_each_entry (child, &alias->d_subdirs, d_child) {
+		list_for_each_entry(child, &alias->d_subdirs, d_child) {
 			if (!child->d_inode)
 				continue;
 
 			spin_lock_nested(&child->d_lock, DENTRY_D_LOCK_NESTED);
 			if (watched)
-				child->d_flags |=
-					DCACHE_FSNOTIFY_PARENT_WATCHED;
+				child->d_flags |= DCACHE_FSNOTIFY_PARENT_WATCHED;
 			else
-				child->d_flags &=
-					~DCACHE_FSNOTIFY_PARENT_WATCHED;
+				child->d_flags &= ~DCACHE_FSNOTIFY_PARENT_WATCHED;
 			spin_unlock(&child->d_lock);
 		}
 		spin_unlock(&alias->d_lock);
@@ -166,8 +163,7 @@ static bool fsnotify_event_needs_parent(struct inode *inode, struct mount *mnt,
 	marks_mask |= fsnotify_parent_needed_mask(inode->i_fsnotify_mask);
 	marks_mask |= fsnotify_parent_needed_mask(inode->i_sb->s_fsnotify_mask);
 	if (mnt)
-		marks_mask |=
-			fsnotify_parent_needed_mask(mnt->mnt_fsnotify_mask);
+		marks_mask |= fsnotify_parent_needed_mask(mnt->mnt_fsnotify_mask);
 
 	/* Did they subscribe for this event with parent/name info? */
 	return mask & marks_mask;
@@ -245,9 +241,9 @@ EXPORT_SYMBOL_GPL(__fsnotify_parent);
 
 static int fsnotify_handle_inode_event(struct fsnotify_group *group,
 				       struct fsnotify_mark *inode_mark,
-				       u32 mask, const void *data,
-				       int data_type, struct inode *dir,
-				       const struct qstr *name, u32 cookie)
+				       u32 mask, const void *data, int data_type,
+				       struct inode *dir, const struct qstr *name,
+				       u32 cookie)
 {
 	const struct path *path = fsnotify_data_path(data, data_type);
 	struct inode *inode = fsnotify_data_inode(data, data_type);
@@ -256,27 +252,24 @@ static int fsnotify_handle_inode_event(struct fsnotify_group *group,
 	if (WARN_ON_ONCE(!ops->handle_inode_event))
 		return 0;
 
-	if ((inode_mark->mask & FS_EXCL_UNLINK) && path &&
-	    d_unlinked(path->dentry))
+	if ((inode_mark->mask & FS_EXCL_UNLINK) &&
+	    path && d_unlinked(path->dentry))
 		return 0;
 
 	/* Check interest of this mark in case event was sent with two marks */
 	if (!(mask & inode_mark->mask & ALL_FSNOTIFY_EVENTS))
 		return 0;
 
-	return ops->handle_inode_event(inode_mark, mask, inode, dir, name,
-				       cookie);
+	return ops->handle_inode_event(inode_mark, mask, inode, dir, name, cookie);
 }
 
 static int fsnotify_handle_event(struct fsnotify_group *group, __u32 mask,
 				 const void *data, int data_type,
 				 struct inode *dir, const struct qstr *name,
-				 u32 cookie,
-				 struct fsnotify_iter_info *iter_info)
+				 u32 cookie, struct fsnotify_iter_info *iter_info)
 {
 	struct fsnotify_mark *inode_mark = fsnotify_iter_inode_mark(iter_info);
-	struct fsnotify_mark *parent_mark =
-		fsnotify_iter_parent_mark(iter_info);
+	struct fsnotify_mark *parent_mark = fsnotify_iter_parent_mark(iter_info);
 	int ret;
 
 	if (WARN_ON_ONCE(fsnotify_iter_sb_mark(iter_info)) ||
@@ -291,9 +284,8 @@ static int fsnotify_handle_event(struct fsnotify_group *group, __u32 mask,
 		 * interested in this event?
 		 */
 		if (parent_mark->mask & FS_EVENT_ON_CHILD) {
-			ret = fsnotify_handle_inode_event(group, parent_mark,
-							  mask, data, data_type,
-							  dir, name, 0);
+			ret = fsnotify_handle_inode_event(group, parent_mark, mask,
+							  data, data_type, dir, name, 0);
 			if (ret)
 				return ret;
 		}
@@ -315,8 +307,8 @@ static int fsnotify_handle_event(struct fsnotify_group *group, __u32 mask,
 		name = NULL;
 	}
 
-	return fsnotify_handle_inode_event(group, inode_mark, mask, data,
-					   data_type, dir, name, cookie);
+	return fsnotify_handle_inode_event(group, inode_mark, mask, data, data_type,
+					   dir, name, cookie);
 }
 
 static int send_to_group(__u32 mask, const void *data, int data_type,
@@ -335,19 +327,17 @@ static int send_to_group(__u32 mask, const void *data, int data_type,
 
 	/* clear ignored on inode modification */
 	if (mask & FS_MODIFY) {
-		fsnotify_foreach_obj_type(type)
-		{
+		fsnotify_foreach_obj_type(type) {
 			if (!fsnotify_iter_should_report_type(iter_info, type))
 				continue;
 			mark = iter_info->marks[type];
-			if (mark && !(mark->flags &
-				      FSNOTIFY_MARK_FLAG_IGNORED_SURV_MODIFY))
+			if (mark &&
+			    !(mark->flags & FSNOTIFY_MARK_FLAG_IGNORED_SURV_MODIFY))
 				mark->ignored_mask = 0;
 		}
 	}
 
-	fsnotify_foreach_obj_type(type)
-	{
+	fsnotify_foreach_obj_type(type) {
 		if (!fsnotify_iter_should_report_type(iter_info, type))
 			continue;
 		mark = iter_info->marks[type];
@@ -359,26 +349,23 @@ static int send_to_group(__u32 mask, const void *data, int data_type,
 		}
 	}
 
-	pr_debug(
-		"%s: group=%p mask=%x marks_mask=%x marks_ignored_mask=%x data=%p data_type=%d dir=%p cookie=%d\n",
-		__func__, group, mask, marks_mask, marks_ignored_mask, data,
-		data_type, dir, cookie);
+	pr_debug("%s: group=%p mask=%x marks_mask=%x marks_ignored_mask=%x data=%p data_type=%d dir=%p cookie=%d\n",
+		 __func__, group, mask, marks_mask, marks_ignored_mask,
+		 data, data_type, dir, cookie);
 
 	if (!(test_mask & marks_mask & ~marks_ignored_mask))
 		return 0;
 
 	if (group->ops->handle_event) {
-		return group->ops->handle_event(group, mask, data, data_type,
-						dir, file_name, cookie,
-						iter_info);
+		return group->ops->handle_event(group, mask, data, data_type, dir,
+						file_name, cookie, iter_info);
 	}
 
 	return fsnotify_handle_event(group, mask, data, data_type, dir,
 				     file_name, cookie, iter_info);
 }
 
-static struct fsnotify_mark *
-fsnotify_first_mark(struct fsnotify_mark_connector **connp)
+static struct fsnotify_mark *fsnotify_first_mark(struct fsnotify_mark_connector **connp)
 {
 	struct fsnotify_mark_connector *conn;
 	struct hlist_node *node = NULL;
@@ -407,16 +394,15 @@ static struct fsnotify_mark *fsnotify_next_mark(struct fsnotify_mark *mark)
  * same group and set the report_mask for selected subset.
  * Returns the report_mask of the selected subset.
  */
-static unsigned int
-fsnotify_iter_select_report_types(struct fsnotify_iter_info *iter_info)
+static unsigned int fsnotify_iter_select_report_types(
+		struct fsnotify_iter_info *iter_info)
 {
 	struct fsnotify_group *max_prio_group = NULL;
 	struct fsnotify_mark *mark;
 	int type;
 
 	/* Choose max prio group among groups of all queue heads */
-	fsnotify_foreach_obj_type(type)
-	{
+	fsnotify_foreach_obj_type(type) {
 		mark = iter_info->marks[type];
 		if (mark &&
 		    fsnotify_compare_groups(max_prio_group, mark->group) > 0)
@@ -428,8 +414,7 @@ fsnotify_iter_select_report_types(struct fsnotify_iter_info *iter_info)
 
 	/* Set the report mask for marks from same group as max prio group */
 	iter_info->report_mask = 0;
-	fsnotify_foreach_obj_type(type)
-	{
+	fsnotify_foreach_obj_type(type) {
 		mark = iter_info->marks[type];
 		if (mark &&
 		    fsnotify_compare_groups(max_prio_group, mark->group) == 0)
@@ -447,8 +432,7 @@ static void fsnotify_iter_next(struct fsnotify_iter_info *iter_info)
 {
 	int type;
 
-	fsnotify_foreach_obj_type(type)
-	{
+	fsnotify_foreach_obj_type(type) {
 		if (fsnotify_iter_should_report_type(iter_info, type))
 			iter_info->marks[type] =
 				fsnotify_next_mark(iter_info->marks[type]);
@@ -508,7 +492,8 @@ int fsnotify(__u32 mask, const void *data, int data_type, struct inode *dir,
 	 * SRCU because we have no references to any objects and do not
 	 * need SRCU to keep them "alive".
 	 */
-	if (!sb->s_fsnotify_marks && (!mnt || !mnt->mnt_fsnotify_marks) &&
+	if (!sb->s_fsnotify_marks &&
+	    (!mnt || !mnt->mnt_fsnotify_marks) &&
 	    (!inode || !inode->i_fsnotify_marks) &&
 	    (!parent || !parent->i_fsnotify_marks))
 		return 0;
@@ -520,6 +505,7 @@ int fsnotify(__u32 mask, const void *data, int data_type, struct inode *dir,
 		marks_mask |= inode->i_fsnotify_mask;
 	if (parent)
 		marks_mask |= parent->i_fsnotify_mask;
+
 
 	/*
 	 * if this is a modify event we may need to clear the ignored masks
@@ -578,8 +564,8 @@ static __init int fsnotify_init(void)
 	if (ret)
 		panic("initializing fsnotify_mark_srcu");
 
-	fsnotify_mark_connector_cachep =
-		KMEM_CACHE(fsnotify_mark_connector, SLAB_PANIC);
+	fsnotify_mark_connector_cachep = KMEM_CACHE(fsnotify_mark_connector,
+						    SLAB_PANIC);
 
 	return 0;
 }

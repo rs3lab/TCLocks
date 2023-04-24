@@ -23,10 +23,50 @@
 #include <asm/byteorder.h>
 #include <asm/qspinlock.h>
 
+#include <linux/syscalls.h>
+
 /*
  * Include queued spinlock statistics code
  */
 #include "qspinlock_stat.h"
+
+DEFINE_PER_CPU(spinlock_t *[1024], lock_order_arr);
+DEFINE_PER_CPU(int, lock_order_idx);
+DEFINE_PER_CPU(int, ooo_events);
+DEFINE_PER_CPU(int, not_in_arr_events);
+DEFINE_PER_CPU(int, nested_events);
+bool done_core_initcall = true;
+
+EXPORT_SYMBOL_GPL(lock_order_arr);
+EXPORT_SYMBOL_GPL(lock_order_idx);
+EXPORT_SYMBOL_GPL(ooo_events);
+EXPORT_SYMBOL_GPL(not_in_arr_events);
+EXPORT_SYMBOL_GPL(done_core_initcall);
+EXPORT_SYMBOL_GPL(nested_events);
+
+/*int __init qspinlock_init(void)
+{
+	done_core_initcall = true;
+	return 0;
+}
+late_initcall(qspinlock_init);*/
+
+SYSCALL_DEFINE0(print_ooo_stats)
+{
+	printk(KERN_ALERT "===== OOO Stats =====\n");
+	int ooo_events1 = 0, not_in_arr_events1 = 0, nested_events1 = 0;
+	int i = 0;
+	for_each_possible_cpu(i)
+	{
+		ooo_events1 += *per_cpu_ptr(&ooo_events, i);
+		not_in_arr_events1 += *per_cpu_ptr(&not_in_arr_events, i);
+		nested_events1 += *per_cpu_ptr(&nested_events, i);
+	}
+	printk(KERN_ALERT "ooo_events: %d\n",ooo_events1);
+	printk(KERN_ALERT "not_in_arr_events: %d\n", not_in_arr_events1);
+	printk(KERN_ALERT "nested_events: %d\n", nested_events1);
+	return 0;
+}
 
 /*
  * The basic principle of a queue-based spinlock can best be understood

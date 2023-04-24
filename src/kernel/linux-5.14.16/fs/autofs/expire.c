@@ -6,7 +6,6 @@
  */
 
 #include "autofs_i.h"
-#include <linux/spinlock.h>
 
 /* Check if a dentry can be expired */
 static inline int autofs_can_expire(struct dentry *dentry,
