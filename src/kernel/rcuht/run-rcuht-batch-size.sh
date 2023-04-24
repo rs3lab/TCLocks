@@ -12,7 +12,7 @@ rw_total=100
 buckets=1024
 entries_ratios=(4)
 
-komb_batch_sizes=(65536) #(1024 4096 16384 65536)
+komb_batch_sizes=(1024 4096 16384 65536)
 
 time=${runtime}
 
