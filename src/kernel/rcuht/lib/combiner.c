@@ -112,7 +112,7 @@ SYSCALL_DEFINE0(komb_clear_stats)
 }
 
 #else
-
+#ifndef KERNEL_SYNCSTRESS
 SYSCALL_DEFINE0(komb_stats)
 {
 	return 0;
@@ -122,4 +122,5 @@ SYSCALL_DEFINE0(komb_clear_stats)
 {
 	return 0;
 }
+#endif
 #endif
