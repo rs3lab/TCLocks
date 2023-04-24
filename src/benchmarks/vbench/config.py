@@ -13,8 +13,7 @@ import hosts
 # https://www.kernel.org/pub/linux/kernel/v3.x/linux-3.18.tar.xz
 ROOT  = "/home/ubuntu/TCLocks/src/benchmarks/vbench"
 # LINUX = os.path.join(ROOT, "tmp", "linux-3.18")
-#LINUX = "/home/ubuntu/kcombiner/src/benchmarks/mosbench/linux"
-LINUX = "/home/ubuntu/kcombiner-linux/src/kernel/linux-5.14.16"
+LINUX = "/home/ubuntu/linux-TCLocks/src/kernel/linux-5.14.16"
 LINUXSRC = os.path.join(LINUX)
 VMROOT = "/root/bench/vm-scalability/bench"
 VMLINUX = os.path.join(VMROOT, "tmp", "linux-3.18")
@@ -238,13 +237,13 @@ psearchy *= mk(dblim = 200000)
 # eximPort - The port Exim should listen on.
 #
 # clients - The number of client load generators to run.
-import exim
-
-exim = mk(benchmark = exim.runner, nonConst = True)
-
-exim *= mk(eximBuild = "exim-mod")
-exim *= mk(eximPort = 2526)
-exim *= mk(clients = 112)
+# import exim
+# 
+# exim = mk(benchmark = exim.runner, nonConst = True)
+# 
+# exim *= mk(eximBuild = "exim-mod")
+# exim *= mk(eximPort = 2526)
+# exim *= mk(clients = 112)
 
 ##################################################################
 # Metis
