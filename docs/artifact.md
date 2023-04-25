@@ -72,7 +72,7 @@ Download the compresssed disk image
 [here](https://zenodo.org/record/7860633/files/tclocks-vm.img.gz?download=1).
 Once you finish downloading the file, uncompress it using following command and move it to the scripts repo.
 
-	$ wget vm.img.xz
+	$ wget https://zenodo.org/record/7860633/files/tclocks-vm.img.gz?download=1
 	$ sudo apt install pigz
 	$ unpigz tclocks-vm.img.gz
 	$ mv tclocks-vm.img TCLocks/scripts/
@@ -80,13 +80,21 @@ Once you finish downloading the file, uncompress it using following command and 
 ## 2. Build kernel for all four locks.
 ---
 
-Install gcc-7.4.0 and other tools to build the kernel.
+Install gcc-7.4.0. Add the following line to /etc/apt/sources.list
+
+	$ "deb [arch=amd64] http://archive.ubuntu.com/ubuntu focal main universe"
+Then install gcc using the following command :
+
+	$ sudo apt update && sudo apt install g++-7
+
+Install tools required to build a kernel.
+	
+	$ sudo apt-get install build-essential libncurses5 libncurses5-dev bin86 \
+                kernel-package libssl-dev bison flex libelf-dev
 
 The following script builds bzImage for kernels for all four locks: stock, cna, shfllock and tclocks
 
 	$ cd TCLocks/scripts/
-	$ sudo apt-get install build-essential libncurses5 libncurses5-dev bin86 \
-                kernel-package libssl-dev bison flex libelf-dev
 	$ ./build-all-kernel.sh
 
 ## 3. Start a QEMU virtual machine
