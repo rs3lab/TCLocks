@@ -5,7 +5,7 @@ mkdir tmp
 
 cd tmp
 
-git clone git@github.com:rs3lab/TCLocks.git
+git clone https://github.com/rs3lab/TCLocks.git
 
 #Build TCLock bzImage
 
