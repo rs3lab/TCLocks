@@ -36,7 +36,7 @@
 #endif
 
 #define SIZE_OF_SHADOW_STACK 8192L
-#define IRQ_NUMA_NODE 255  
+#define IRQ_NUMA_NODE 255
 
 //#define DEBUG_KOMB 1
 
@@ -194,7 +194,6 @@ static inline bool check_irq_node(struct komb_node *node)
 	return (node->socket_id == IRQ_NUMA_NODE || node->rsp == 0xdeadbeef);
 }
 
-
 __always_inline void clear_locked_set_completed(struct komb_node *lock)
 {
 	WRITE_ONCE(lock->locked_completed, 1);
@@ -314,8 +313,9 @@ get_next_node(struct komb_node *my_node)
 	while (true) {
 		if (next_node == NULL || next_node->next == NULL)
 			goto next_node_null;
-		else if(check_irq_node(next_node) || check_irq_node(next_node->next))
-			return NULL;
+		else if (check_irq_node(next_node) ||
+			 check_irq_node(next_node->next))
+			goto next_node_null;
 
 		if (next_node->socket_id == numa_node_id()) {
 #ifdef PREFETCHING
@@ -324,7 +324,7 @@ get_next_node(struct komb_node *my_node)
 					 ->rsp);
 			prefetchw(rsp_ptr);
 			int i;
-			for(i = 1; i < NUM_PREFETCH_LINES; i++)
+			for (i = 1; i < NUM_PREFETCH_LINES; i++)
 				prefetchw(rsp_ptr + (64 * i));
 
 			prefetch(next_node->next);
@@ -351,6 +351,7 @@ __attribute__((noipa)) noinline notrace static void
 execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 {
 	void *incoming_rsp_ptr, *outgoing_rsp_ptr;
+	struct komb_node *next_node = NULL;
 
 	struct shadow_stack *ptr = this_cpu_ptr(&local_shadow_stack);
 
@@ -420,8 +421,11 @@ execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 		ptr->curr_cs_cpu = -1;
 		lock->locked = _Q_LOCKED_COMBINER_VAL;
 
-		if (ptr->next_node_ptr != NULL &&
-		    ptr->next_node_ptr->next != NULL) {
+		next_node = ptr->next_node_ptr;
+
+		if (next_node != NULL && next_node->next != NULL &&
+		    !check_irq_node(next_node) &&
+		    !check_irq_node(next_node->next)) {
 			execute_cs(lock, ptr->next_node_ptr);
 		}
 	}
@@ -441,8 +445,8 @@ run_combiner(struct qspinlock *lock, struct komb_node *curr_node)
 	struct komb_node *next_node = curr_node->next;
 	int counter = 0;
 
-	if (next_node == NULL || check_irq_node(curr_node) || 
-		check_irq_node(next_node)) {
+	if (next_node == NULL || check_irq_node(curr_node) ||
+	    check_irq_node(next_node)) {
 		set_locked(lock);
 		/*
 		 * Make this node spin on the locked variable and then it will 
@@ -471,7 +475,6 @@ run_combiner(struct qspinlock *lock, struct komb_node *curr_node)
 
 		curr_node = next_node;
 	}
-
 #else
 	ptr->counter_val = 0;
 
@@ -734,7 +737,6 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 	lock->locked = prev_locked_val;
 
 	return 0;
-
 release:
 	/* 
 	 * release the node
@@ -1058,6 +1060,21 @@ queue:
 		u32 tail, idx;
 
 		idx = curr_node->count++;
+		/*
+	 * 4 nodes are allocated based on the assumption that there will
+	 * not be nested NMIs taking spinlocks. That may not be true in
+	 * some architectures even though the chance of needing more than
+	 * 4 nodes will still be extremely unlikely. When that happens,
+	 * we fall back to spinning on the lock directly without using
+	 * any MCS node. This is not the most elegant solution, but is
+	 * simple enough.
+	 */
+		if (unlikely(idx >= MAX_NODES)) {
+			while (!komb_spin_trylock(lock))
+				cpu_relax();
+			goto irq_release;
+		}
+
 		curr_node += idx;
 		tail = encode_tail(smp_processor_id(), idx);
 
@@ -1072,6 +1089,8 @@ queue:
 		curr_node->irqs_disabled = false;
 		curr_node->lock = lock;
 		curr_node->task_struct_ptr = current;
+
+		uint64_t prev_rsp = curr_node->rsp;
 		curr_node->rsp = 0xdeadbeef;
 
 		smp_wmb();
@@ -1085,6 +1104,8 @@ queue:
 			print_debug("IRQ going to waiting for lock\n");
 			smp_cond_load_relaxed_sched(&curr_node->locked, !(VAL));
 		}
+
+		curr_node->rsp = prev_rsp;
 
 		u32 val, new_val;
 
@@ -1141,8 +1162,8 @@ queue:
 #endif
 
 #ifdef LOCK_MEASURE_TIME
-	*this_cpu_ptr(&lock_stack_switch) = UINT64_MAX;
-	*this_cpu_ptr(&unlock_stack_switch) = UINT64_MAX;
+		*this_cpu_ptr(&lock_stack_switch) = UINT64_MAX;
+		*this_cpu_ptr(&unlock_stack_switch) = UINT64_MAX;
 #endif
 		LOCK_START_TIMING_PER_CPU(lock_stack_switch);
 
@@ -1301,7 +1322,7 @@ komb_spin_unlock(struct qspinlock *lock)
 	uint64_t counter = ptr->counter_val;
 
 	if (next_node == NULL || next_node->next == NULL ||
-	    check_irq_node(next_node) || check_irq_node(next_node->next) || 
+	    check_irq_node(next_node) || check_irq_node(next_node->next) ||
 	    counter >= komb_batch_size || need_resched()) {
 		incoming_rsp_ptr = &(ptr->local_shadow_stack_ptr);
 		ptr->curr_cs_cpu = -1;
@@ -1324,8 +1345,10 @@ komb_spin_unlock(struct qspinlock *lock)
 	outgoing_rsp_ptr = &(curr_node->rsp);
 
 #ifdef DEBUG_KOMB
-	BUG_ON(*(uint64_t *)incoming_rsp_ptr == NULL);
-	BUG_ON(*(uint64_t *)outgoing_rsp_ptr == NULL);
+	BUG_ON(incoming_rsp_ptr == NULL);
+	BUG_ON(outgoing_rsp_ptr == NULL);
+	BUG_ON(incoming_rsp_ptr == 0xdeadbeef);
+	BUG_ON(outgoing_rsp_ptr == 0xdeadbeef);
 #endif
 
 #ifdef ENABLE_IRQS_CHECK
