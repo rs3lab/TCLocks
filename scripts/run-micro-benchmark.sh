@@ -18,7 +18,7 @@ do
 	sleep 5
 
 	echo "Running FxMark ${l}" >> completion.log
-	ssh -p 4444 ubuntu@localhost 'cd /home/ubuntu/TCLocks/src/benchmarks/fxmark/;./run-fxmark.sh'
+	echo ubuntu | ssh -tt -p 4444 ubuntu@localhost 'cd /home/ubuntu/TCLocks/src/benchmarks/fxmark/; sudo -v; sudo ./run-fxmark.sh'
 	sleep 10
 
 	sudo pkill -9 qemu
