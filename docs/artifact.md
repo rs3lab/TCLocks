@@ -59,6 +59,7 @@ image. In this guide, we introduce how to quickly setup an environment to
 run TCLocks using the disk image.
 There is also a section guides [how to create the disk
 image](#how-to-create-the-disk-image) from scratch.
+Until otherwise noted, all the steps are executed on the host machine.
 
 ## 1. Clone the TCLocks repo
 ---
@@ -86,7 +87,16 @@ Install gcc-9. Add the following line to /etc/apt/sources.list
 
 Then install gcc using the following command :
 
-	$ sudo apt update && sudo apt install gcc-9
+	$ sudo apt update && sudo apt install gcc-9	
+	$ sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 40
+
+Choose gcc-9 when running the following command :
+
+	$ sudo update-alternatives --config gcc
+
+Check if gcc version is correct :
+
+	$ gcc -v
 
 Install tools required to build a kernel.
 	
@@ -175,7 +185,7 @@ Main scripts are under `./TCLocks/scripts/`. You can run all of the steps below 
 	$ cd TCLocks/scripts
 	$ ./run-all.sh
 
-Before running the experiments, update the defaults.sh file in the `~/TCLocks/src` directory.
+**Before running the experiments, SSH into the VM and update the defaults.sh file in the `~/TCLocks/src` directory.**
 
 1. Set the `cores` and `python_env_cores` to a list of CPUs upto the maximum number of CPUs in the VM. 
 For example, if the VM has 28 cores.
