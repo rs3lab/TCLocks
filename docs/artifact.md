@@ -80,12 +80,13 @@ Once you finish downloading the file, uncompress it using following command and 
 ## 2. Build kernel for all four locks.
 ---
 
-Install gcc-7.4.0. Add the following line to /etc/apt/sources.list
+Install gcc-9. Add the following line to /etc/apt/sources.list
 
 	$ "deb [arch=amd64] http://archive.ubuntu.com/ubuntu focal main universe"
+
 Then install gcc using the following command :
 
-	$ sudo apt update && sudo apt install g++-7
+	$ sudo apt update && sudo apt install gcc-9
 
 Install tools required to build a kernel.
 	
@@ -103,14 +104,15 @@ The following script builds bzImage for kernels for all four locks: stock, cna, 
 Start qemu with script under `TCLocks/scripts/run-vm.sh`.
 
 The command starts a virtual machine with 128G of memory and 8 NUMA sockets each
-equipped with 28 cores, results in 224 cores in total. Please adjust the
-numbers and path to the vm image for your environment.
+equipped with 28 cores, results in 224 cores in total. 
+**Adjust the number of cores and sockets based on the host machine.**
+Its preferable to have the same configuration as the host machine.
+Update the path to the vm image for your environment.
 The script opens port `4444` for ssh and `5555` for qmp.
 
 The guest will be start with default `5.14.16-stock` kernel.
 
-The provided disk image contains one 30GB partition holding Ubuntu 20.04 and
-one 20GB partition for experiments.
+The provided disk image contains one 50GB partition holding Ubuntu 20.04 and TCLocks repo.
 There is single user `ubuntu` with password `ubuntu`, who has sudo power.
 Use port 4444 to ssh into the machine.
 
@@ -136,7 +138,9 @@ The port 5555 is for `qmp` which allows us to observe NUMA effect with vCPU by
 pinning each vCPU to physical cores. This step must be done before measuring numbers.
 This step is automatically done by the included experiment script.
 Run the `pin-vcpu.py` script to pin the cores. Here, `num_vm_cores` is 224 with
-above example. Install `qmp` 
+above example. 
+
+Install `qmp` and `psutils` on the host machine to pin the vCPUs.
 
 	$ pip install qmp
 	$ pip install psutils
@@ -179,11 +183,17 @@ For example, if the VM has 28 cores.
 	cores=(1 2 4 8 12 16 20 28)
 	python_env_cores='[1,2,4,8,12,16,20,28]'
 
+2. Set the `mutex_cores` to a list of CPUs upto 4x the maximum number of CPUs in the VM. 
+For oversubscription ( > maximum number of CPUs ), a few core counts are enough to validate.
+For example, if the VM has 28 cores.
+
+	mutex_cores=(1 2 4 8 12 16 20 28 56 84 112)
+
 2. Set the `ncores` to the maximum number of CPUs in the VM.
 
 	ncores=28
 
-3. Set the `runtime` to 30 seconds
+3. Set the `runtime` to 30 seconds.
 	
 	runtime=30
 
@@ -250,7 +260,7 @@ First, download a ubuntu 20.04 LTS image ([link](https://releases.ubuntu.com/20.
 
 Create a storage image.
 
-	$ qemu-img create ubuntu-20.04.img 30G
+	$ qemu-img create ubuntu-20.04.img 50G
 
 Start QEMU and use the downloaded iso image as a booting disk.
 
@@ -270,9 +280,6 @@ Start QEMU and use the downloaded iso image as a booting disk.
 		-drive file=/path/to/created/ubuntu-20.04.img,format=raw \
 		-cdrom /path/to/downloaded/ubuntu-20.04.4-live-server-amd64.iso \
 
-
-Please make sure to have multiple sockets and enough number of cores to evaluate
-lock scalability on NUMA machine.
 
 If X11 connection is there, you'll see the QEMU GUI popup window to install
 ubuntu. Install ubuntu server with OpenSSH package and disabled LVM.
@@ -324,7 +331,7 @@ option.
 
 The second option is more convenient for frequent kernel changes, but it still
 requires one time static install for kernel modules.
-TCLocks-linux has three lock implementation all based on linux kernel v5.4, so you
+TCLocks-linux has three lock implementation all based on linux kernel v5.14.16, so you
 can reuse kernel modules across the three branches (stock, cna, shfllock) once
 installed.
 
@@ -341,11 +348,11 @@ and resolve dependencies.
 		kernel-package libssl-dev bison flex libelf-dev
 >
 > [Dependency]
-> In addition, please make sure you're using gcc-7.
+> In addition, please make sure you're using gcc-9.
 >
 	(guest) $ gcc -v
 	...
-	gcc version 7.5.0 (Ubuntu 7.5.0-6ubuntu2)
+	gcc version 9.5.0
 
 
 Before start compilation, please make sure `CONFIG_PARAVIRT_SPINLOCKS` is not
@@ -357,16 +364,16 @@ set in your `.config` file.
 	(guest)$ sudo shutdown -h now		# Install complete. Shut down guest machine
 
 Now, in the host machine, you can choose a branch you want to use and then start
-a qemu with that lock implementation. Please make sure you're using gcc-7 here
+a qemu with that lock implementation. Please make sure you're using gcc-9 here
 too.
 
 	$ gcc -v
 	...
-	gcc version 7.5.0
+	gcc version 9.5.0
 
 	$ git clone https://github.com/rs3lab/TCLocks.git
 	$ cd ~/TCLocks
-	$ git checkout -t origin/stock		# or select origin/cna, origin/shfllock
+	$ git checkout -t origin/stock		# or select origin/cna, origin/shfllock, origin/master (For TCLocks)
 	$ make -j <num_threads>
 
 	$ ./qemu-system-x86_64 \
