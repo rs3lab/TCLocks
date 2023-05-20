@@ -1,14 +1,4 @@
 
-./run-vm.sh &
-
-sleep 60
-
-scp -r -P 4444 ubuntu@localhost:~/TCLocks/doc ../
-
-sudo pkill -9 qemu
-
-export CORES=224
-
 # Nano-benchmark
 
 export LOCK=spinlock
