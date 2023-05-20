@@ -34,7 +34,7 @@ else:
 runs = [1]
 if lock_type == "rwsem":
     rw_writes = [1, 20]
-else
+else:
     rw_writes = [100]
 time = 30
 buckets = 1024
@@ -47,14 +47,11 @@ if lock_type == "mutex":
 else:
     core = [1,2,4,8,12,16,20,28,56,84,112,128,168,224]
 
-plot_file_name=result_folder+"rcuht-"+lock_type+"-"+str(cores)+"cores-"+str(time)+"seconds.pdf"
-
 if __name__ == "__main__":
 	for writes in rw_writes:
 		out_file_name= result_folder+lock_type+"-"+str(writes)+"-percent-writes.csv"
 		out_file= open(out_file_name,"w")
 		index=0
-		plot_file.write("plot ")
 		for b in bench:
 			out_file.write("# "+ b+"\n")
 			out_file.write("# Cores, Throughput (Jobs/us)\n")
