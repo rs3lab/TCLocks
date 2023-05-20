@@ -14,9 +14,13 @@ title: Artifact Evaluation Guide
 	- [Macro-benchmark](#macro-benchmark)
 	- [Nano-benchmark](#nano-benchmark)
 	- [Userspace-benchmark](#userspace-benchmark)
-	- [Generate data](#generate-data)
+- [Generate data](#generate-data)
+	- [Micro-benchmarks](#micro-benchmarks)
+	- [Macro-benchmarks](#macro-benchmarks)
+	- [Nano-benchmarks](#nano-benchmarks)
+	- [Userspace-benchmarks](#userspace-benchmarks)
 - [How to create the disk image](#how-to-create-the-disk-image)
-
+- [FAQs](#faqs)
 
 # Overview
 ---
@@ -254,10 +258,109 @@ For example, if the VM has 28 cores.
 
 * The performance for TCLocks will be better than stock / Mutex / RWSem.
 
-## Generate data
-	
+
+# Generate data
+---
+
+Copy the results folder ('doc') from the VM to the host machine.
+
+	$ cd TCLocks/scripts
+	$ ./run-vm.sh &
+	$ sleep 60
+	$ scp -r -P 4444 ubuntu@localhost:~/TCLocks/doc ../
+	$ sudo pkill -9 qemu
+
+## Micro-benchmarks
+
+### Will-it-scale
+
+Each lock design will have a folder in the will-it-scale directory.
+
+	$ cd TCLocks/doc/results/will-it-scale
+	$ ls
+	$ cna-224  shfllock-224  stock-224  tclocks-224
+
+Each benchmark will have a log file.
+
+	$ cd stock-224
+	$ lock1.log  mmap1.log
+
+For comparing lock1 performance, checkout the second column in the `lock1.log` file for each of the lock design. You can also use the following command for comparision:
+
+	$ vimdiff stock-224/lock1.log cna-224/lock1.log shfllock-224/lock1.log tclocks-224/lock1.log 
+
+### FxMark
+
+For each of the lock design, change the `tmpfs` output to its corresponding lock output and create a single `fxmark.log` file.
+
+	$ cd TCLocks/doc/results/fxmark
+	$ sed 's/tmpfs/stock/' stock/fxmark.log
+	$ sed 's/tmpfs/cna/' cna/fxmark.log
+	$ sed 's/tmpfs/shfllock/' shfllock/fxmark.log
+	$ sed 's/tmpfs/tclocks/' tclocks/fxmark.log
+	$ cat stock/fxmark.log > fxmark.log
+	$ cat cna/fxmark.log >> fxmark.log
+	$ cat shfllock/fxmark.log >> fxmark.log
+	$ cat tclocks/fxmark.log >> fxmark.log
+
+Run the plotter file to extract the results.
+
+	$ cd src/benchmarks/fxmark/bin/
+	$ mkdir output
+	$ ./plotter.py --log=../../../../doc/results/fxmark/fxmark.log --ty=sc --out=./output
+
+The `output` directory will contain extracted results.
+
+	$ ls output
+	$ mem:cna:MRDM:directio.dat       mem:stock:MRDM:directio.dat  sc.gp
+	$ mem:cna:MWRM:directio.dat       mem:stock:MWRM:directio.dat  sc.pdf
+	$ mem:shfllock:MRDM:directio.dat  mem:tclocks:MRDM:directio.dat
+	$ mem:shfllock:MWRM:directio.dat  mem:tclocks:MWRM:directio.dat
+
+For comparing `MRDM` performance , you can use the following command:
+
+	$ cd output
+	$ vimdiff mem:stock:MRDM:directio.dat mem:cna:MRDM:directio.dat mem:shfllock:MRDM:directio.dat mem:tclocks:MRDM:directio.dat
+
+## Macro-benchmarks
+
+Macro-benchmarks results will be present in the VM. For comparision, ssh into the VM and check the `vbench` directory.
+
+	$ cd ~/TCLocks/src/benchmarks/vbench/
+
+In the `results` directory, every folder will be timestamped by the date and time. Each folder will corresponds to one lock desing and one benchmark. To figure out which lock design, use the following command:
+
+	$ cat results/<DATE-TIME>/benchmark-psearchy/cores-1/HostInfo.host-10.0.2.15.uname
+	$ Linux cloudimg 5.14.16-stock #3 SMP Wed Apr 26 01:16:25 CEST 2023 x86_64 x86_64 x86_64 GNU/Linux
+
+You can extract the results using the following script:
+
+	$ sudo ./graph results/20230426-051646/benchmark-psearchy
+
+You can compare the results for evaluated benchmarks (`psearch` and `metis`) and for evaluated lock designs (`stock`, `cna`, `shfllock` and `tclocks`)
+
+## Nano-benchmarks
+
 	$ cd TCLocks/scripts
 	$ ./run-parse-script.sh
+
+Figure 7(a) Spinlock -> doc/results/results-spinlock-224cores-30seconds/1024buckets-4096entries/spinlock-100-percent-writes.csv
+
+Figure 7(c) Mutex -> doc/results/results-mutex-56cores-30seconds/1024buckets-4096entries/mutex-100-percent-writes.csv
+
+Figure 7(d) RwSem (1% writes) -> doc/results/results-rwsem-56cores-30seconds/1024buckets-4096entries/rwsem-1-percent-writes.csv
+
+Figure 7(e) RwSem (20% writes) -> doc/results/results-rwsem-56cores-30seconds/1024buckets-4096entries/rwsem-20-percent-writes.csv
+
+Figure 7(f) Optimization -> doc/results/results-spinlock-224cores-30seconds/1024buckets-4096entries/spinlock-optimization-100-percent-writes.csv
+
+Figure 7(g) Prefetching -> doc/results/results-spinlock-224cores-30seconds/1024buckets-4096entries/spinlock-prefetch-100-percent-writes.csv
+Figure 7(g) Batch Size -> doc/results/results-spinlock-224cores-30seconds/1024buckets-4096entries/spinlock-batch-size-100-percent-writes.csv
+
+
+## Userspace-benchmarks
+
+For each lock design, there will be a folder containing results for each core count. The last line in each file contains the results. For comparision, use the first value (micros/ops). Lower is better.
 
 # How to create the disk image
 ---
@@ -419,3 +522,13 @@ custom kernel.
 
 Inside the guest VM, clone the [TCLocks](https://github.com/rs3lab/TCLocks) repo
 
+
+# FAQs
+---
+## 1. Issue with backend `user`
+
+If you find an error like below :
+
+	$ qemu-system-x86_64: network backend 'user' is not compiled into this binary
+
+You can recompile qemu with the slirp library [Link](https://stackoverflow.com/questions/75641274/network-backend-user-is-not-compiled-into-this-binary).
