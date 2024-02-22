@@ -19,13 +19,15 @@ $(STRESSMOD)-objs += locks/cna.o
 $(STRESSMOD)-objs += locks/rwaqm.o
 
 $(STRESSMOD)-objs += locks/komb.o
-$(STRESSMOD)-objs += locks/komb_rwlock.o
-$(STRESSMOD)-objs += locks/komb_mutex.o
-$(STRESSMOD)-objs += locks/komb_rwsem.o
+#$(STRESSMOD)-objs += locks/komb_rwlock.o
+#$(STRESSMOD)-objs += locks/komb_mutex.o
+#$(STRESSMOD)-objs += locks/komb_rwsem.o
 $(STRESSMOD)-objs += timing_stats.o
 $(STRESSMOD)-objs += lib/combiner.o
 
-ccflags-y := -g -DDEBUG -DKERNEL_SYNCSTRESS -I$(src)/include/ -I$(src)/spinlock/
+$(STRESSMOD)-objs += locks/swilock_delegate.o
+
+ccflags-y := -g -DDEBUG -DKERNEL_SYNCSTRESS -I$(src)/include/ -I$(src)/spinlock/ -Werror
 
 Q	= @
 

@@ -10,18 +10,24 @@
 #include <linux/kernel.h>
 #include <linux/percpu.h>
 
+#define DSM_DEBUG 0
+#define DEBUG_KOMB 0 
+#define KOMB_STATS 1
+
 #define NUMA_AWARE 1
 #define PREFETCHING 1
 #define WWJUMP 1 
 
 #define NUM_PREFETCH_LINES 6
 
+#define SIZE_OF_SHADOW_STACK 4096
+#define IRQ_NUMA_NODE 255
+#define UINT64_MAX 0xffffffffffffffffL
+
 #define LOCK_START_TIMING_DISABLE(name, start)
 #define LOCK_START_TIMING_PER_CPU_DISABLE(name)
 #define LOCK_END_TIMING_DISABLE(name, start)
 #define LOCK_END_TIMING_PER_CPU_DISABLE(name)
-
-
 
 #define komb_switch_to_shadow_stack()                                          \
 	({                                                                     \
@@ -77,21 +83,21 @@ extern long komb_batch_size;
 
 void komb_context_switch(void *incoming_rsp_ptr, void *outgoing_rsp_ptr);
 
-#ifdef KOMB_STATS
+#if KOMB_STATS
 DECLARE_PER_CPU_ALIGNED(u64, combiner_count);
 DECLARE_PER_CPU_ALIGNED(u64, waiter_combined);
 DECLARE_PER_CPU_ALIGNED(u64, ooo_combiner_count);
 DECLARE_PER_CPU_ALIGNED(u64, ooo_waiter_combined);
 DECLARE_PER_CPU_ALIGNED(u64, ooo_unlocks);
-DECLARE_PER_CPU_ALIGNED(u64, lock_not_in_task);
-DECLARE_PER_CPU_ALIGNED(u64, mutex_combiner_count);
-DECLARE_PER_CPU_ALIGNED(u64, mutex_waiter_combined);
-DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_combiner_count);
-DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_waiter_combined);
-DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_unlocks);
-DECLARE_PER_CPU_ALIGNED(u64, rwsem_combiner_count);
-DECLARE_PER_CPU_ALIGNED(u64, rwsem_waiter_combined);
-DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_combiner_count);
-DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_waiter_combined);
-DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_unlocks);
+//DECLARE_PER_CPU_ALIGNED(u64, lock_not_in_task);
+//DECLARE_PER_CPU_ALIGNED(u64, mutex_combiner_count);
+//DECLARE_PER_CPU_ALIGNED(u64, mutex_waiter_combined);
+//DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_combiner_count);
+//DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_waiter_combined);
+//DECLARE_PER_CPU_ALIGNED(u64, mutex_ooo_unlocks);
+//DECLARE_PER_CPU_ALIGNED(u64, rwsem_combiner_count);
+//DECLARE_PER_CPU_ALIGNED(u64, rwsem_waiter_combined);
+//DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_combiner_count);
+//DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_waiter_combined);
+//DECLARE_PER_CPU_ALIGNED(u64, rwsem_ooo_unlocks);
 #endif

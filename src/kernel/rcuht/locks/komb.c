@@ -7,7 +7,7 @@
  * Currently nested locking becomes TTAS lock.
  * irqs_disabled() will hurt performance when running in VM.
  */
-#ifdef KERNEL_SYNCSTRESS
+#if KERNEL_SYNCSTRESS
 #include "spinlock/komb.h"
 #include "timing_stats.h"
 #else
@@ -24,8 +24,7 @@
 #include <linux/kernel.h>
 #include <linux/syscalls.h>
 
-//#define DSM_DEBUG 1
-#ifdef DSM_DEBUG
+#if DSM_DEBUG
 #define print_debug(fmt, ...)                                                  \
 	({                                                                     \
 		printk(KERN_EMERG "[%d] komb (%s) lock(%px): " fmt,            \
@@ -35,14 +34,7 @@
 #define print_debug(fmt, ...)
 #endif
 
-#define SIZE_OF_SHADOW_STACK 8192L
-#define IRQ_NUMA_NODE 255
-
-//#define DEBUG_KOMB 1
-
-#define UINT64_MAX 0xffffffffffffffffL
-
-#ifdef KERNEL_SYNCSTRESS
+#if KERNEL_SYNCSTRESS
 #define smp_cond_load_relaxed_sched(ptr, cond_expr)                            \
 	({                                                                     \
 		typeof(ptr) __PTR = (ptr);                                     \
@@ -103,7 +95,7 @@ struct shadow_stack {
 	 * TODO (Space Optimization): Fix this to be at the base of the shadow 
 	 * stack.
 	 */
-	uint64_t lock_addr[8];
+	void* lock_addr[8];
 
 	/*
 	 * ptr points to the base of the shadow stack.
@@ -117,8 +109,8 @@ struct shadow_stack {
 	uint32_t prev_cs_cpu;
 	uint64_t counter_val;
 	struct komb_node *next_node_ptr;
-	uint64_t local_shadow_stack_ptr;
-#ifdef NUMA_AWARE
+	void* local_shadow_stack_ptr;
+#if NUMA_AWARE
 	/*
  * Create a queue which is used by the combiner to store nodes which belong to 
  * different socket.
@@ -130,20 +122,16 @@ struct shadow_stack {
 
 	int irqs_disabled;
 
-} __cacheline_aligned_in_smp;
+	char dummy[128];
 
-#ifdef LOCK_MEASURE_TIME
+};
+
+#if LOCK_MEASURE_TIME
 static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop);
+static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_lockfn);
+static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_unlockfn);
 static DEFINE_PER_CPU_ALIGNED(uint64_t, lock_stack_switch);
 static DEFINE_PER_CPU_ALIGNED(uint64_t, unlock_stack_switch);
-#endif
-
-#ifdef KOMB_STATS
-DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_count);
-DEFINE_PER_CPU_ALIGNED(uint64_t, waiter_combined);
-DEFINE_PER_CPU_ALIGNED(uint64_t, ooo_combiner_count);
-DEFINE_PER_CPU_ALIGNED(uint64_t, ooo_waiter_combined);
-DEFINE_PER_CPU_ALIGNED(uint64_t, ooo_unlocks);
 #endif
 
 /*
@@ -191,7 +179,7 @@ inline __pure u32 get_cpu_from_tail(u32 tail)
 
 static inline bool check_irq_node(struct komb_node *node)
 {
-	return (node->socket_id == IRQ_NUMA_NODE || node->rsp == 0xdeadbeef);
+	return (node->socket_id == IRQ_NUMA_NODE || node->rsp == ((void*)0xdeadbeef));
 }
 
 __always_inline void clear_locked_set_completed(struct komb_node *lock)
@@ -201,7 +189,7 @@ __always_inline void clear_locked_set_completed(struct komb_node *lock)
 
 __always_inline void clear_pending_set_locked(struct qspinlock *lock)
 {
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(lock->locked != 0);
 #endif
 	WRITE_ONCE(lock->locked_pending, _Q_LOCKED_VAL);
@@ -246,7 +234,7 @@ static __always_inline void check_and_set_combiner(struct qspinlock *lock)
 {
 	u32 val, new_val;
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(lock->locked == _Q_LOCKED_VAL);
 #endif
 
@@ -255,7 +243,7 @@ static __always_inline void check_and_set_combiner(struct qspinlock *lock)
 			val = atomic_cond_read_relaxed(
 				&lock->val, !(VAL & _Q_LOCKED_PENDING_MASK));
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 			BUG_ON(lock->locked != 0);
 #endif
 
@@ -283,7 +271,7 @@ static __always_inline u32 komb_fetch_set_pending_acquire(struct qspinlock *lock
 	return atomic_fetch_or_acquire(_Q_PENDING_VAL, &lock->val);
 }
 
-#ifdef NUMA_AWARE
+#if NUMA_AWARE
 __always_inline static void add_to_local_queue(struct komb_node *node)
 {
 	//printk(KERN_ALERT "%d Move node to local queue: %d\n",
@@ -304,8 +292,9 @@ __always_inline static void add_to_local_queue(struct komb_node *node)
 __always_inline static struct komb_node *
 get_next_node(struct komb_node *my_node)
 {
-#ifdef NUMA_AWARE
+#if NUMA_AWARE
 	struct komb_node *curr_node, *next_node;
+	int i;
 
 	curr_node = my_node;
 	next_node = curr_node->next;
@@ -318,12 +307,11 @@ get_next_node(struct komb_node *my_node)
 			goto next_node_null;
 
 		if (next_node->socket_id == numa_node_id()) {
-#ifdef PREFETCHING
+#if PREFETCHING
 			void *rsp_ptr =
-				(per_cpu_ptr(&komb_nodes[0], next_node->cpuid)
+				(void*)(per_cpu_ptr(&komb_nodes[0], next_node->cpuid)
 					 ->rsp);
 			prefetchw(rsp_ptr);
-			int i;
 			for (i = 1; i < NUM_PREFETCH_LINES; i++)
 				prefetchw(rsp_ptr + (64 * i));
 
@@ -357,7 +345,7 @@ execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 
 	ptr->curr_cs_cpu = curr_node->cpuid;
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(curr_node->cpuid == smp_processor_id());
 	if ((ptr->ptr - (ptr->local_shadow_stack_ptr)) > SIZE_OF_SHADOW_STACK) {
 		printk(KERN_ALERT "%d %px %px\n", smp_processor_id(), ptr->ptr,
@@ -369,7 +357,7 @@ execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 	incoming_rsp_ptr = &(curr_node->rsp);
 	outgoing_rsp_ptr = &(ptr->local_shadow_stack_ptr);
 
-#ifdef LOCK_MEASURE_TIME
+#if LOCK_MEASURE_TIME
 	*this_cpu_ptr(&combiner_loop) = UINT64_MAX;
 #endif
 
@@ -378,19 +366,19 @@ execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 	 * function call, which we will resume execution at using the switch
 	 * in unlock.
 	 */
-#ifdef DEBUG_KOMB
-#ifdef ENABLE_IRQS_CHECK
+#if DEBUG_KOMB
+#if ENABLE_IRQS_CHECK
 	BUG_ON(irqs_disabled());
 #endif
 
-	BUG_ON(*(uint64_t *)incoming_rsp_ptr == NULL);
-	BUG_ON(*(uint64_t *)outgoing_rsp_ptr == NULL);
+	BUG_ON(*(char *)incoming_rsp_ptr == NULL);
+	BUG_ON(*(char *)outgoing_rsp_ptr == NULL);
 #endif
 	//local_irq_disable();
 	komb_context_switch(incoming_rsp_ptr, outgoing_rsp_ptr);
 	//local_irq_enable();
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	if ((ptr->ptr - (ptr->local_shadow_stack_ptr)) > SIZE_OF_SHADOW_STACK) {
 		printk(KERN_ALERT "%d %px %px\n", smp_processor_id(), ptr->ptr,
 		       ptr->local_shadow_stack_ptr);
@@ -402,7 +390,7 @@ execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 	if (lock->locked == _Q_UNLOCKED_OOO_VAL) {
 		print_debug("Combiner got control back OOO unlock\n");
 
-#ifdef KOMB_STATS
+#if KOMB_STATS
 		this_cpu_add(ooo_waiter_combined, ptr->counter_val);
 		this_cpu_inc(ooo_combiner_count);
 #endif
@@ -413,7 +401,7 @@ execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 				per_cpu_ptr(&komb_nodes[0], ptr->curr_cs_cpu);
 			curr_node->rsp = this_cpu_ptr(&komb_nodes[0])->rsp;
 			clear_locked_set_completed(curr_node);
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 			BUG_ON(ptr->prev_cs_cpu != -1);
 #endif
 		}
@@ -439,12 +427,14 @@ execute_cs(struct qspinlock *lock, struct komb_node *curr_node)
 __attribute__((noipa)) noinline notrace static void
 run_combiner(struct qspinlock *lock, struct komb_node *curr_node)
 {
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(curr_node == NULL);
 #endif
+	struct shadow_stack *ptr;
 	struct komb_node *next_node = curr_node->next;
+#if WWJUMP == 0
 	int counter = 0;
-
+#endif
 	if (next_node == NULL || check_irq_node(curr_node) ||
 	    check_irq_node(next_node)) {
 		set_locked(lock);
@@ -457,9 +447,9 @@ run_combiner(struct qspinlock *lock, struct komb_node *curr_node)
 		return;
 	}
 
-	struct shadow_stack *ptr = this_cpu_ptr(&local_shadow_stack);
+	ptr = this_cpu_ptr(&local_shadow_stack);
 
-#ifndef WWJUMP
+#if WWJUMP == 0
 	while (curr_node) {
 		counter++;
 
@@ -487,7 +477,7 @@ run_combiner(struct qspinlock *lock, struct komb_node *curr_node)
 		"Combiner got the control back: %d counter: %d last_waiter: %d\n",
 		smp_processor_id(), ptr->counter_val, ptr->curr_cs_cpu);
 
-#ifdef KOMB_STATS
+#if KOMB_STATS
 	this_cpu_add(waiter_combined, ptr->counter_val);
 	this_cpu_inc(combiner_count);
 #endif
@@ -501,7 +491,7 @@ run_combiner(struct qspinlock *lock, struct komb_node *curr_node)
 	next_node = ptr->next_node_ptr;
 #endif
 
-#ifdef NUMA_AWARE
+#if NUMA_AWARE
 	if (ptr->local_queue_head != NULL) {
 		ptr->local_queue_tail->next = next_node;
 		next_node = ptr->local_queue_head;
@@ -513,13 +503,13 @@ run_combiner(struct qspinlock *lock, struct komb_node *curr_node)
 	print_debug("After combiner %d, next node: %d\n", smp_processor_id(),
 		    next_node->cpuid);
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(next_node == NULL);
 #endif
 
 	set_locked(lock);
 
-#ifdef WWJUMP
+#if WWJUMP
 	ptr->curr_cs_cpu = -1;
 #endif
 	/* 
@@ -538,7 +528,7 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 {
 	register struct komb_node *prev_node = NULL, *next_node = NULL;
 	struct qspinlock *parent_lock;
-	int old_tail, val, j;
+	int old_tail, val, i, j;
 
 	/*
 	 * TODO: Make sure these variables are stored on the combiner stack
@@ -548,13 +538,14 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 	 */
 	uint32_t prev_cs_cpu;
 	bool prev_locked_val;
-	uint64_t prev_rsp;
+	void* prev_rsp;
 	uint64_t prev_counter_val;
 	struct komb_node *prev_next_node_ptr = NULL;
-#ifdef NUMA_AWARE
+#if NUMA_AWARE
 	struct komb_node *prev_local_queue_head;
 	struct komb_node *prev_local_queue_tail;
 #endif
+	struct shadow_stack *ptr;
 
 	old_tail = xchg_tail(lock, tail);
 
@@ -563,7 +554,6 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 
 		prev_node->next = curr_node;
 
-		int count = 0;
 
 		smp_cond_load_relaxed_sched(&curr_node->locked, !(VAL));
 
@@ -574,10 +564,10 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 				BUG_ON(true);
 		}*/
 
-		struct shadow_stack *ptr = this_cpu_ptr(&local_shadow_stack);
+		ptr = this_cpu_ptr(&local_shadow_stack);
 
 		if (curr_node->completed) {
-#ifdef ENABLE_IRQS_CHECK
+#if ENABLE_IRQS_CHECK
 			if (curr_node->irqs_disabled) {
 				//local_irq_disable();
 				ptr->irqs_disabled = curr_node->irqs_disabled;
@@ -591,7 +581,7 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 
 			if (j >= 0) {
 				parent_lock = ptr->lock_addr[j];
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 				BUG_ON(parent_lock == lock);
 #endif
 				if (parent_lock->locked ==
@@ -601,12 +591,11 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 				}
 			}
 
-			prefetchw(curr_node->rsp);
-			prefetchw(curr_node->rsp + 64);
-			prefetchw(curr_node->rsp + 128);
-			prefetchw(curr_node->rsp + 192);
-			prefetchw(curr_node->rsp + 256);
-			prefetchw(curr_node->rsp + 320);
+#if PREFETCHING
+			for (i = 0; i < NUM_PREFETCH_LINES; i++)
+				prefetchw(((char*)curr_node->rsp) + (64 * i));
+#endif
+
 			LOCK_START_TIMING_PER_CPU(unlock_stack_switch);
 			return 0;
 		}
@@ -651,7 +640,7 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 	 */
 	smp_cond_load_relaxed_sched(&curr_node->next, (VAL));
 	next_node = curr_node->next;
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(next_node == NULL);
 #endif
 	/*while (!next_node) {
@@ -659,14 +648,14 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 		cpu_relax();
 	}*/
 
-	struct shadow_stack *ptr = this_cpu_ptr(&local_shadow_stack);
+	ptr = this_cpu_ptr(&local_shadow_stack);
 
 	prev_cs_cpu = ptr->curr_cs_cpu;
 	ptr->curr_cs_cpu = -1;
 
 	ptr->irqs_disabled = false;
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(ptr->prev_cs_cpu != -1);
 #endif
 	/*
@@ -675,7 +664,7 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 	 */
 	curr_node->count--;
 	prev_locked_val = lock->locked;
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(prev_locked_val >= _Q_LOCKED_COMBINER_VAL);
 #endif
 	lock->locked = _Q_LOCKED_COMBINER_VAL;
@@ -688,7 +677,7 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 	prev_next_node_ptr = ptr->next_node_ptr;
 	ptr->next_node_ptr = NULL;
 
-#ifdef NUMA_AWARE
+#if NUMA_AWARE
 	prev_local_queue_head = ptr->local_queue_head;
 	prev_local_queue_tail = ptr->local_queue_tail;
 
@@ -701,14 +690,14 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 		if (ptr->lock_addr[j] != NULL)
 			break;
 	j += 1;
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(j >= 8 || j < 0);
 #endif
 	ptr->lock_addr[j] = lock;
 
 	run_combiner(lock, next_node);
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(this_cpu_ptr(&local_shadow_stack)->lock_addr[j] != lock);
 #endif
 
@@ -717,7 +706,7 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 	ptr->next_node_ptr = prev_next_node_ptr;
 	ptr->counter_val = prev_counter_val;
 
-#ifdef NUMA_AWARE
+#if NUMA_AWARE
 	ptr->local_queue_head = prev_local_queue_head;
 	ptr->local_queue_tail = prev_local_queue_tail;
 #endif
@@ -785,7 +774,7 @@ void komb_init(void)
 		void *stack_ptr = vzalloc(SIZE_OF_SHADOW_STACK);
 		struct shadow_stack *ptr = per_cpu_ptr(&local_shadow_stack, i);
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 		BUG_ON(stack_ptr == NULL);
 #endif
 
@@ -798,14 +787,14 @@ void komb_init(void)
 		ptr->prev_cs_cpu = -1;
 		ptr->counter_val = 0;
 		ptr->next_node_ptr = NULL;
-#ifdef NUMA_AWARE
+#if NUMA_AWARE
 		ptr->local_queue_head = NULL;
 		ptr->local_queue_tail = NULL;
 #endif
 
 		ptr->irqs_disabled = false;
 
-#ifdef LOCK_MEASURE_TIME
+#if LOCK_MEASURE_TIME
 		*per_cpu_ptr(&combiner_loop, i) = UINT64_MAX;
 #endif
 	}
@@ -825,7 +814,7 @@ void komb_spin_lock_init(struct qspinlock *lock)
 	atomic_set(&lock->val, 0);
 }
 
-__attribute__((noipa)) noinline notrace static uint64_t
+__attribute__((noipa)) noinline notrace static void*
 get_shadow_stack_ptr(void)
 {
 	struct shadow_stack *ptr = this_cpu_ptr(&local_shadow_stack);
@@ -883,8 +872,8 @@ komb_spin_lock_slowpath(struct qspinlock *lock)
 	 * our return address, but Linux only assumes 8-byte stack alignment,
 	 * so it isn't a problem for us.
 	 */
-#ifdef KOMB_DEBUG
-#ifdef ENABLE_IRQS_CHECK
+#if DEBUG_KOMB
+#if ENABLE_IRQS_CHECK
 	BUG_ON(irqs_disabled());
 #endif
 #endif
@@ -958,7 +947,11 @@ komb_spin_lock(struct qspinlock *lock)
 {
 	u32 val, cnt;
 	struct komb_node *curr_node = NULL;
-
+#if WWJUMP
+	struct shadow_stack *ptr;
+	uint32_t curr_cpuid, prev_cpuid;
+	struct komb_node *prev_node, *next_node;
+#endif
 	/*
 	 * Fastpath
 	 */
@@ -1039,12 +1032,13 @@ komb_spin_lock(struct qspinlock *lock)
 queue:
 
 	curr_node = this_cpu_ptr(&komb_nodes[0]);
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(curr_node == NULL);
 #endif
-#ifdef ENABLE_IRQS_CHECK
+#if ENABLE_IRQS_CHECK
 	if (curr_node->count > 0 || !in_task() || irqs_disabled() ||
 	    current->migration_disabled) {
+		BUG_ON(true);
 		/*print_debug("Nested lock: waiting for lock\n");
 		while (true) {
 			atomic_cond_read_acquire(&lock->val, !(VAL));
@@ -1090,7 +1084,7 @@ queue:
 		curr_node->lock = lock;
 		curr_node->task_struct_ptr = current;
 
-		uint64_t prev_rsp = curr_node->rsp;
+		void* prev_rsp = curr_node->rsp;
 		curr_node->rsp = 0xdeadbeef;
 
 		smp_wmb();
@@ -1127,7 +1121,7 @@ queue:
 			val = atomic_cond_read_relaxed(
 				&lock->val, !(VAL & _Q_LOCKED_PENDING_MASK));
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 			BUG_ON(lock->locked != 0);
 #endif
 
@@ -1145,7 +1139,7 @@ queue:
 		smp_cond_load_relaxed_sched(&curr_node->next, (VAL));
 		next_node = curr_node->next;
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 		BUG_ON(next_node == NULL);
 #endif
 
@@ -1161,7 +1155,7 @@ queue:
 	} else {
 #endif
 
-#ifdef LOCK_MEASURE_TIME
+#if LOCK_MEASURE_TIME
 		*this_cpu_ptr(&lock_stack_switch) = UINT64_MAX;
 		*this_cpu_ptr(&unlock_stack_switch) = UINT64_MAX;
 #endif
@@ -1169,28 +1163,28 @@ queue:
 
 		komb_spin_lock_slowpath(lock);
 
-#ifdef WWJUMP
-		struct shadow_stack *ptr = this_cpu_ptr(&local_shadow_stack);
+#if WWJUMP
+#if LOCK_MEASURE_TIME
+		LOCK_START_TIMING_PER_CPU(combiner_loop_lockfn);
+#endif
 
-		uint32_t curr_cpuid = ptr->curr_cs_cpu;
+		ptr = this_cpu_ptr(&local_shadow_stack);
+		curr_cpuid = ptr->curr_cs_cpu;
 		if (curr_cpuid != -1) {
-			struct komb_node *curr_node =
-				per_cpu_ptr(&komb_nodes[0], curr_cpuid);
+			curr_node = per_cpu_ptr(&komb_nodes[0], curr_cpuid);
 			if (curr_node->lock == lock) {
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 				BUG_ON(lock->locked != _Q_LOCKED_COMBINER_VAL);
 #endif
-				struct komb_node *next_node =
-					get_next_node(curr_node);
+				next_node = get_next_node(curr_node);
 				ptr->next_node_ptr = next_node;
 			}
 
-			uint32_t prev_cpuid = ptr->prev_cs_cpu;
+			prev_cpuid = ptr->prev_cs_cpu;
 			if (prev_cpuid != -1) {
-				struct komb_node *prev_node =
-					per_cpu_ptr(&komb_nodes[0], prev_cpuid);
+				prev_node = per_cpu_ptr(&komb_nodes[0], prev_cpuid);
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 				BUG_ON(prev_node->lock != lock);
 #endif
 				print_debug("Waking up prev waiter: %d\n",
@@ -1201,9 +1195,13 @@ queue:
 				//	LOCK_END_TIMING_PER_CPU(combiner_loop);
 			}
 		}
+#if LOCK_MEASURE_TIME
+		LOCK_END_TIMING_PER_CPU(combiner_loop_lockfn);
 #endif
 
-#ifdef ENABLE_IRQS_CHECK
+#endif
+
+#if ENABLE_IRQS_CHECK
 	}
 #endif
 }
@@ -1220,7 +1218,7 @@ struct task_struct *komb_get_current(spinlock_t *lock)
 
 	for (j = 0; j < 8; j++) {
 		if (ptr->lock_addr[j] == lock) {
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 			BUG_ON(ptr->curr_cs_cpu < 0);
 #endif
 			return per_cpu_ptr(&komb_nodes[0], ptr->curr_cs_cpu)
@@ -1250,20 +1248,27 @@ komb_spin_unlock(struct qspinlock *lock)
 	struct shadow_stack *ptr = this_cpu_ptr(&local_shadow_stack);
 	int from_cpuid = ptr->curr_cs_cpu;
 	void *incoming_rsp_ptr, *outgoing_rsp_ptr;
-
+	struct komb_node *curr_node;
+#if WWJUMP
+	struct komb_node *next_node;
+	uint64_t counter;
+#endif
 	int j, max_idx, my_idx;
+	void* temp_lock_addr;
 
-	uint64_t temp_lock_addr;
+#if LOCK_MEASURE_TIME
+		LOCK_START_TIMING_PER_CPU(combiner_loop_unlockfn);
+#endif
 
 	j = 0;
 	max_idx = -1;
 	my_idx = -1;
 
-	if (lock->locked == _Q_LOCKED_VAL ||
+	/*if (lock->locked == _Q_LOCKED_VAL ||
 	    lock->locked == _Q_LOCKED_IRQ_VAL) {
 		lock->locked = false;
 		return;
-	}
+	}*/
 
 	for (j = 0; j < 8; j++) {
 		temp_lock_addr = ptr->lock_addr[j];
@@ -1280,7 +1285,7 @@ komb_spin_unlock(struct qspinlock *lock)
 		    lock->locked == _Q_LOCKED_IRQ_VAL)
 			lock->locked = false;
 		else if (lock->locked == _Q_LOCKED_COMBINER_VAL) {
-#ifdef KOMB_STATS
+#if KOMB_STATS
 			this_cpu_inc(ooo_unlocks);
 #endif
 			lock->locked = _Q_UNLOCKED_OOO_VAL;
@@ -1290,11 +1295,12 @@ komb_spin_unlock(struct qspinlock *lock)
 		return;
 	}
 
-	LOCK_END_TIMING_PER_CPU_DISABLE(combiner_loop);
+#if LOCK_MEASURE_TIME
+	LOCK_END_TIMING_PER_CPU(combiner_loop);
+	LOCK_START_TIMING_PER_CPU(combiner_loop);
+#endif
 
-	LOCK_START_TIMING_PER_CPU_DISABLE(combiner_loop);
-
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	if (lock->locked != _Q_LOCKED_COMBINER_VAL)
 		BUG_ON(true);
 
@@ -1306,7 +1312,7 @@ komb_spin_unlock(struct qspinlock *lock)
 
 #endif
 	if (my_idx < max_idx) {
-#ifdef KOMB_STATS
+#if KOMB_STATS
 		this_cpu_inc(ooo_unlocks);
 #endif
 
@@ -1314,12 +1320,12 @@ komb_spin_unlock(struct qspinlock *lock)
 		return;
 	}
 
-	struct komb_node *curr_node = per_cpu_ptr(&komb_nodes[0], from_cpuid);
+	curr_node = per_cpu_ptr(&komb_nodes[0], from_cpuid);
 
-#ifdef WWJUMP
-	struct komb_node *next_node = ptr->next_node_ptr;
+#if WWJUMP
+	next_node = ptr->next_node_ptr;
 
-	uint64_t counter = ptr->counter_val;
+	counter = ptr->counter_val;
 
 	if (next_node == NULL || next_node->next == NULL ||
 	    check_irq_node(next_node) || check_irq_node(next_node->next) ||
@@ -1333,6 +1339,7 @@ komb_spin_unlock(struct qspinlock *lock)
 		ptr->prev_cs_cpu = curr_node->cpuid;
 		incoming_rsp_ptr = &(next_node->rsp);
 		ptr->counter_val = counter + 1;
+		prefetchw(((char*)curr_node) + 195);
 		print_debug("Jumping to the next waiter: %d\n",
 			    next_node->cpuid);
 	}
@@ -1344,16 +1351,22 @@ komb_spin_unlock(struct qspinlock *lock)
 	 */
 	outgoing_rsp_ptr = &(curr_node->rsp);
 
-#ifdef DEBUG_KOMB
+#if DEBUG_KOMB
 	BUG_ON(incoming_rsp_ptr == NULL);
 	BUG_ON(outgoing_rsp_ptr == NULL);
 	BUG_ON(incoming_rsp_ptr == 0xdeadbeef);
 	BUG_ON(outgoing_rsp_ptr == 0xdeadbeef);
 #endif
 
-#ifdef ENABLE_IRQS_CHECK
+#if ENABLE_IRQS_CHECK
 	curr_node->irqs_disabled = irqs_disabled();
 #endif
+
+#if LOCK_MEASURE_TIME
+		LOCK_END_TIMING_PER_CPU(combiner_loop_unlockfn);
+#endif
+
+
 	//local_irq_disable();
 	komb_context_switch(incoming_rsp_ptr, outgoing_rsp_ptr);
 	ptr = this_cpu_ptr(&local_shadow_stack);
@@ -1406,3 +1419,26 @@ __always_inline int komb_spin_value_unlocked(struct qspinlock lock)
 {
 	return !atomic_read(&lock.val);
 }
+
+#if KOMB_STATS
+void komb_print_stats(void)
+ {
+	int i;
+	uint64_t total_counters[5] = { 0 };
+	printk(KERN_ALERT "======== KOMB spinlock stats ========\n");
+	for_each_online_cpu (i) {
+	       total_counters[0] += per_cpu(combiner_count, i);
+	       total_counters[1] += per_cpu(waiter_combined, i);
+	       total_counters[2] += per_cpu(ooo_unlocks, i);
+	       total_counters[3] += per_cpu(ooo_combiner_count, i);
+	       total_counters[4] += per_cpu(ooo_waiter_combined, i);
+	}
+
+       printk(KERN_ALERT "Combiner_count: %lld\n", total_counters[0]);
+       printk(KERN_ALERT "waiter_combined: %lld\n", total_counters[1]);
+       printk(KERN_ALERT "ooo_unlocks: %lld\n", total_counters[2]);
+       printk(KERN_ALERT "ooo_combiner_count: %lld\n", total_counters[3]);
+       printk(KERN_ALERT "ooo_waiter_combined: %lld\n", total_counters[4]);
+ }
+#endif
+

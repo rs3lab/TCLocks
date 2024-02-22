@@ -479,9 +479,9 @@ static __always_inline void set_locked(struct orig_qspinlock *lock)
  */
 void cna_spin_lock_slowpath(struct orig_qspinlock *lock, u32 val)
 {
-	struct mcs_spinlock *prev, *next, *node, *succ;
-	u32 old, tail, new;
-	int idx, cid;
+	struct mcs_spinlock *prev, *next, *node;
+	u32 old, tail;
+	int idx;
 
 	BUILD_BUG_ON(CONFIG_NR_CPUS >= (1U << _Q_TAIL_CPU_BITS));
 

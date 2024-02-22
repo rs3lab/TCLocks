@@ -46,14 +46,15 @@
 #include "spinlock/aqs.h"
 #include "spinlock/cna.h"
 #include "spinlock/komb.h"
-#include "rwlock/komb_rwlock.h"
+#include "spinlock/swilock.h"
+//#include "rwlock/komb_rwlock.h"
 #include "rwlock/rwaqs_ntrl.h"
 #include "rwlock/rwaqs_rp.h"
 #include "rwlock/rwaqs_rp_v1.h"
 #include "rwsem/rwaqm.h"
 #include "mutex/aqm.h"
-#include "mutex/komb_mutex.h"
-#include "rwsem/komb_rwsem.h"
+//#include "mutex/komb_mutex.h"
+//#include "rwsem/komb_rwsem.h"
 
 #include "timing_stats.h"
 
@@ -84,7 +85,7 @@ static unsigned long entries = 4096; /* Number of entries initially added */
 static unsigned long reader_range = 0; /* Upper bound of reader range */
 static unsigned long writer_range = 0; /* Upper bound of writer range */
 
-long komb_batch_size = 262144;
+long komb_batch_size = 1048576; //262144;
 
 module_param(reader_type, charp, 0444);
 MODULE_PARM_DESC(reader_type, "Hash table reader implementation");
@@ -122,9 +123,10 @@ struct rcuhashbash_bucket {
 		struct rw_semaphore rwsem;
 		struct percpu_rw_semaphore percpu_rwsem;
 		struct orig_qspinlock komb;
-		struct komb_rwlock krwlock;
-		struct komb_mutex mutex_komb;
-		struct komb_rwsem rwsem_komb;
+		struct orig_qspinlock swilock;
+		//struct komb_rwlock krwlock;
+		//struct komb_mutex mutex_komb;
+		//struct komb_rwsem rwsem_komb;
 	};
 };
 
@@ -169,15 +171,18 @@ DECLARE_TABLE_LOCK(table_spinlock, DEFINE_SPINLOCK, spin_lock, spin_unlock,
 DECLARE_TABLE_LOCK(table_komb, DEFINE_KOMBSPINLOCK, komb_spin_lock,
 		   komb_spin_unlock, komb_spin_lock, komb_spin_unlock);
 
-DECLARE_TABLE_LOCK(table_komb_mutex, DEFINE_KOMBMUTEX, komb_mutex_lock,
-		   komb_mutex_unlock, komb_mutex_lock, komb_mutex_unlock);
+DECLARE_TABLE_LOCK(table_swilock, DEFINE_SWILOCK, swi_lock,
+		                   swi_unlock, swi_lock, swi_unlock);
 
-DECLARE_TABLE_LOCK(table_komb_rwsem, DECLARE_KOMB_RWSEM, komb_rwsem_down_write,
-		   komb_rwsem_up_write, komb_rwsem_down_read,
-		   komb_rwsem_up_read);
-
-DECLARE_TABLE_LOCK(table_komb_rwlock, DEFINE_KOMBRWLOCK, komb_write_lock,
-		   komb_write_unlock, komb_read_lock, komb_read_unlock);
+//DECLARE_TABLE_LOCK(table_komb_mutex, DEFINE_KOMBMUTEX, komb_mutex_lock,
+//		   komb_mutex_unlock, komb_mutex_lock, komb_mutex_unlock);
+//
+//DECLARE_TABLE_LOCK(table_komb_rwsem, DECLARE_KOMB_RWSEM, komb_rwsem_down_write,
+//		   komb_rwsem_up_write, komb_rwsem_down_read,
+//		   komb_rwsem_up_read);
+//
+//DECLARE_TABLE_LOCK(table_komb_rwlock, DEFINE_KOMBRWLOCK, komb_write_lock,
+//		   komb_write_unlock, komb_read_lock, komb_read_unlock);
 
 DECLARE_TABLE_LOCK(table_rwlock, DEFINE_RWLOCK, write_lock, write_unlock,
 		   read_lock, read_unlock);
@@ -483,12 +488,12 @@ static int rcuhashbash_write_lock(u32 src_value, u32 dst_value,
 	bool same_bucket;
 	bool dest_in_use = false;
 
+	LOCK_DEFINE_TIMING_VAR(write_critical_section);
+	LOCK_DEFINE_TIMING_VAR(write_path);
+	
 	src_bucket = src_value % buckets;
 	dst_bucket = dst_value % buckets;
 	same_bucket = src_bucket == dst_bucket;
-
-	LOCK_DEFINE_TIMING_VAR(write_critical_section);
-	LOCK_DEFINE_TIMING_VAR(write_path);
 
 	/*printk(KERN_ALERT
 	       "%d lock_call src bucket:%px lock:%px \n %d dst bucket:%px lock:%px\n",
@@ -660,9 +665,9 @@ static int rcuhashbash_rw_thread(void *arg)
 
 	current->komb_stack_base_ptr = ptr + SIZE_OF_SHADOW_STACK;
 	current->komb_stack_curr_ptr = ptr + SIZE_OF_SHADOW_STACK - 8;
-	current->komb_mutex_node = vzalloc(sizeof(struct komb_mutex_node));
-
-	BUG_ON(current->komb_mutex_node == NULL);
+//	current->komb_mutex_node = vzalloc(sizeof(struct komb_mutex_node));
+//
+//	BUG_ON(current->komb_mutex_node == NULL);
 
 	current->komb_local_queue_head = NULL;
 	current->komb_local_queue_tail = NULL;
@@ -749,20 +754,20 @@ static void komb_spin_lock_init_bucket(struct rcuhashbash_bucket *bucket)
 	komb_spin_lock_init(&bucket->komb);
 }
 
-static void komb_rwlock_init_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_rwlock_init(&bucket->krwlock);
-}
-
-static void komb_rwsem_init_bucket(struct rcuhashbash_bucket *bucket)
-{
-	init_komb_rwsem(&bucket->rwsem_komb);
-}
-
-static void komb_mutex_init_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_mutex_init(&bucket->mutex_komb);
-}
+//static void komb_rwlock_init_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_rwlock_init(&bucket->krwlock);
+//}
+//
+//static void komb_rwsem_init_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	init_komb_rwsem(&bucket->rwsem_komb);
+//}
+//
+//static void komb_mutex_init_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_mutex_init(&bucket->mutex_komb);
+//}
 
 static void spinlock_read_lock_bucket(struct rcuhashbash_bucket *bucket)
 {
@@ -794,20 +799,20 @@ static void komb_spin_lock_read_lock_bucket(struct rcuhashbash_bucket *bucket)
 	komb_spin_lock(&bucket->komb);
 }
 
-static void komb_mutex_read_lock_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_mutex_lock(&bucket->mutex_komb);
-}
-
-static void komb_rwlock_read_lock_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_read_lock(&bucket->krwlock);
-}
-
-static void komb_rwsem_read_lock_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_rwsem_down_read(&bucket->rwsem_komb);
-}
+//static void komb_mutex_read_lock_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_mutex_lock(&bucket->mutex_komb);
+//}
+//
+//static void komb_rwlock_read_lock_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_read_lock(&bucket->krwlock);
+//}
+//
+//static void komb_rwsem_read_lock_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_rwsem_down_read(&bucket->rwsem_komb);
+//}
 
 static void spinlock_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
 {
@@ -839,20 +844,20 @@ static void komb_spin_lock_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
 	komb_spin_unlock(&bucket->komb);
 }
 
-static void komb_mutex_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_mutex_unlock(&bucket->mutex_komb);
-}
-
-static void komb_rwlock_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_read_unlock(&bucket->krwlock);
-}
-
-static void komb_rwsem_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
-{
-	komb_rwsem_up_read(&bucket->rwsem_komb);
-}
+//static void komb_mutex_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_mutex_unlock(&bucket->mutex_komb);
+//}
+//
+//static void komb_rwlock_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_read_unlock(&bucket->krwlock);
+//}
+//
+//static void komb_rwsem_read_unlock_bucket(struct rcuhashbash_bucket *bucket)
+//{
+//	komb_rwsem_up_read(&bucket->rwsem_komb);
+//}
 
 static void spinlock_write_lock_buckets(struct rcuhashbash_bucket *b1,
 					struct rcuhashbash_bucket *b2)
@@ -938,47 +943,47 @@ static void komb_spin_lock_write_lock_buckets(struct rcuhashbash_bucket *b1,
 	}
 }
 
-static void komb_mutex_write_lock_buckets(struct rcuhashbash_bucket *b1,
-					  struct rcuhashbash_bucket *b2)
-{
-	if (b1 == b2)
-		komb_mutex_lock(&b1->mutex_komb);
-	else if (b1 < b2) {
-		komb_mutex_lock(&b1->mutex_komb);
-		komb_mutex_lock_nested(&b2->mutex_komb, NULL);
-	} else {
-		komb_mutex_lock(&b2->mutex_komb);
-		komb_mutex_lock_nested(&b1->mutex_komb, NULL);
-	}
-}
-
-static void komb_rwlock_write_lock_buckets(struct rcuhashbash_bucket *b1,
-					   struct rcuhashbash_bucket *b2)
-{
-	if (b1 == b2)
-		komb_write_lock(&b1->krwlock);
-	else if (b1 < b2) {
-		komb_write_lock(&b1->krwlock);
-		komb_write_lock(&b2->krwlock);
-	} else {
-		komb_write_lock(&b2->krwlock);
-		komb_write_lock(&b1->krwlock);
-	}
-}
-
-static void komb_rwsem_write_lock_buckets(struct rcuhashbash_bucket *b1,
-					  struct rcuhashbash_bucket *b2)
-{
-	if (b1 == b2)
-		komb_rwsem_down_write(&b1->rwsem_komb);
-	else if (b1 < b2) {
-		komb_rwsem_down_write(&b1->rwsem_komb);
-		komb_rwsem_down_write(&b2->rwsem_komb);
-	} else {
-		komb_rwsem_down_write(&b2->rwsem_komb);
-		komb_rwsem_down_write(&b1->rwsem_komb);
-	}
-}
+//static void komb_mutex_write_lock_buckets(struct rcuhashbash_bucket *b1,
+//					  struct rcuhashbash_bucket *b2)
+//{
+//	if (b1 == b2)
+//		komb_mutex_lock(&b1->mutex_komb);
+//	else if (b1 < b2) {
+//		komb_mutex_lock(&b1->mutex_komb);
+//		komb_mutex_lock_nested(&b2->mutex_komb, NULL);
+//	} else {
+//		komb_mutex_lock(&b2->mutex_komb);
+//		komb_mutex_lock_nested(&b1->mutex_komb, NULL);
+//	}
+//}
+//
+//static void komb_rwlock_write_lock_buckets(struct rcuhashbash_bucket *b1,
+//					   struct rcuhashbash_bucket *b2)
+//{
+//	if (b1 == b2)
+//		komb_write_lock(&b1->krwlock);
+//	else if (b1 < b2) {
+//		komb_write_lock(&b1->krwlock);
+//		komb_write_lock(&b2->krwlock);
+//	} else {
+//		komb_write_lock(&b2->krwlock);
+//		komb_write_lock(&b1->krwlock);
+//	}
+//}
+//
+//static void komb_rwsem_write_lock_buckets(struct rcuhashbash_bucket *b1,
+//					  struct rcuhashbash_bucket *b2)
+//{
+//	if (b1 == b2)
+//		komb_rwsem_down_write(&b1->rwsem_komb);
+//	else if (b1 < b2) {
+//		komb_rwsem_down_write(&b1->rwsem_komb);
+//		komb_rwsem_down_write(&b2->rwsem_komb);
+//	} else {
+//		komb_rwsem_down_write(&b2->rwsem_komb);
+//		komb_rwsem_down_write(&b1->rwsem_komb);
+//	}
+//}
 
 static void spinlock_write_unlock_buckets(struct rcuhashbash_bucket *b1,
 					  struct rcuhashbash_bucket *b2)
@@ -1028,35 +1033,35 @@ static void komb_spin_lock_write_unlock_buckets(struct rcuhashbash_bucket *b1,
 		komb_spin_unlock(&b2->komb);
 }
 
-static void komb_mutex_write_unlock_buckets(struct rcuhashbash_bucket *b1,
-					    struct rcuhashbash_bucket *b2)
-{
-	if (b1 == b2)
-		komb_mutex_unlock(&b1->mutex_komb);
-	else if (b1 < b2) {
-		komb_mutex_unlock(&b2->mutex_komb);
-		komb_mutex_unlock(&b1->mutex_komb);
-	} else {
-		komb_mutex_unlock(&b1->mutex_komb);
-		komb_mutex_unlock(&b2->mutex_komb);
-	}
-}
-
-static void komb_rwlock_write_unlock_buckets(struct rcuhashbash_bucket *b1,
-					     struct rcuhashbash_bucket *b2)
-{
-	komb_write_unlock(&b1->krwlock);
-	if (b1 != b2)
-		komb_write_unlock(&b2->krwlock);
-}
-
-static void komb_rwsem_write_unlock_buckets(struct rcuhashbash_bucket *b1,
-					    struct rcuhashbash_bucket *b2)
-{
-	komb_rwsem_up_write(&b1->rwsem_komb);
-	if (b1 != b2)
-		komb_rwsem_up_write(&b2->rwsem_komb);
-}
+//static void komb_mutex_write_unlock_buckets(struct rcuhashbash_bucket *b1,
+//					    struct rcuhashbash_bucket *b2)
+//{
+//	if (b1 == b2)
+//		komb_mutex_unlock(&b1->mutex_komb);
+//	else if (b1 < b2) {
+//		komb_mutex_unlock(&b2->mutex_komb);
+//		komb_mutex_unlock(&b1->mutex_komb);
+//	} else {
+//		komb_mutex_unlock(&b1->mutex_komb);
+//		komb_mutex_unlock(&b2->mutex_komb);
+//	}
+//}
+//
+//static void komb_rwlock_write_unlock_buckets(struct rcuhashbash_bucket *b1,
+//					     struct rcuhashbash_bucket *b2)
+//{
+//	komb_write_unlock(&b1->krwlock);
+//	if (b1 != b2)
+//		komb_write_unlock(&b2->krwlock);
+//}
+//
+//static void komb_rwsem_write_unlock_buckets(struct rcuhashbash_bucket *b1,
+//					    struct rcuhashbash_bucket *b2)
+//{
+//	komb_rwsem_up_write(&b1->rwsem_komb);
+//	if (b1 != b2)
+//		komb_rwsem_up_write(&b2->rwsem_komb);
+//}
 
 static struct rcuhashbash_ops all_ops[] = {
 	{
@@ -1274,39 +1279,39 @@ static struct rcuhashbash_ops all_ops[] = {
 		.write_lock_buckets = komb_spin_lock_write_lock_buckets,
 		.write_unlock_buckets = komb_spin_lock_write_unlock_buckets,
 	},
-	{
-		.reader_type = "komb_mutex",
-		.writer_type = "komb_mutex",
-		.init_bucket = komb_mutex_init_bucket,
-		.read = rcuhashbash_read_lock,
-		.read_lock_bucket = komb_mutex_read_lock_bucket,
-		.read_unlock_bucket = komb_mutex_read_unlock_bucket,
-		.write = rcuhashbash_write_lock,
-		.write_lock_buckets = komb_mutex_write_lock_buckets,
-		.write_unlock_buckets = komb_mutex_write_unlock_buckets,
-	},
-	{
-		.reader_type = "krwlock",
-		.writer_type = "krwlock",
-		.init_bucket = komb_rwlock_init_bucket,
-		.read = rcuhashbash_read_lock,
-		.read_lock_bucket = komb_rwlock_read_lock_bucket,
-		.read_unlock_bucket = komb_rwlock_read_unlock_bucket,
-		.write = rcuhashbash_write_lock,
-		.write_lock_buckets = komb_rwlock_write_lock_buckets,
-		.write_unlock_buckets = komb_rwlock_write_unlock_buckets,
-	},
-	{
-		.reader_type = "komb_rwsem",
-		.writer_type = "komb_rwsem",
-		.init_bucket = komb_rwsem_init_bucket,
-		.read = rcuhashbash_read_lock,
-		.read_lock_bucket = komb_rwsem_read_lock_bucket,
-		.read_unlock_bucket = komb_rwsem_read_unlock_bucket,
-		.write = rcuhashbash_write_lock,
-		.write_lock_buckets = komb_rwsem_write_lock_buckets,
-		.write_unlock_buckets = komb_rwsem_write_unlock_buckets,
-	},
+//	{
+//		.reader_type = "komb_mutex",
+//		.writer_type = "komb_mutex",
+//		.init_bucket = komb_mutex_init_bucket,
+//		.read = rcuhashbash_read_lock,
+//		.read_lock_bucket = komb_mutex_read_lock_bucket,
+//		.read_unlock_bucket = komb_mutex_read_unlock_bucket,
+//		.write = rcuhashbash_write_lock,
+//		.write_lock_buckets = komb_mutex_write_lock_buckets,
+//		.write_unlock_buckets = komb_mutex_write_unlock_buckets,
+//	},
+//	{
+//		.reader_type = "krwlock",
+//		.writer_type = "krwlock",
+//		.init_bucket = komb_rwlock_init_bucket,
+//		.read = rcuhashbash_read_lock,
+//		.read_lock_bucket = komb_rwlock_read_lock_bucket,
+//		.read_unlock_bucket = komb_rwlock_read_unlock_bucket,
+//		.write = rcuhashbash_write_lock,
+//		.write_lock_buckets = komb_rwlock_write_lock_buckets,
+//		.write_unlock_buckets = komb_rwlock_write_unlock_buckets,
+//	},
+//	{
+//		.reader_type = "komb_rwsem",
+//		.writer_type = "komb_rwsem",
+//		.init_bucket = komb_rwsem_init_bucket,
+//		.read = rcuhashbash_read_lock,
+//		.read_lock_bucket = komb_rwsem_read_lock_bucket,
+//		.read_unlock_bucket = komb_rwsem_read_unlock_bucket,
+//		.write = rcuhashbash_write_lock,
+//		.write_lock_buckets = komb_rwsem_write_lock_buckets,
+//		.write_unlock_buckets = komb_rwsem_write_unlock_buckets,
+//	},
 	{
 		.reader_type = "spinlock",
 		.writer_type = "spinlock",
@@ -1372,6 +1377,16 @@ static struct rcuhashbash_ops all_ops[] = {
 		.write_lock_buckets = table_spinlock_write_lock_buckets,
 		.write_unlock_buckets = table_spinlock_write_unlock_buckets,
 	},
+        {
+                .reader_type = "table_swilock",
+                .writer_type = "table_swilock",
+                .read = rcuhashbash_read_lock,
+                .read_lock_bucket = table_swilock_read_lock_bucket,
+                .read_unlock_bucket = table_swilock_read_unlock_bucket,
+                .write = rcuhashbash_write_lock,
+                .write_lock_buckets = table_swilock_write_lock_buckets,
+                .write_unlock_buckets = table_swilock_write_unlock_buckets,
+        },
 	{
 		.reader_type = "table_komb",
 		.writer_type = "table_komb",
@@ -1382,36 +1397,36 @@ static struct rcuhashbash_ops all_ops[] = {
 		.write_lock_buckets = table_komb_write_lock_buckets,
 		.write_unlock_buckets = table_komb_write_unlock_buckets,
 	},
-	{
-		.reader_type = "table_komb_mutex",
-		.writer_type = "table_komb_mutex",
-		.read = rcuhashbash_read_lock,
-		.read_lock_bucket = table_komb_mutex_read_lock_bucket,
-		.read_unlock_bucket = table_komb_mutex_read_unlock_bucket,
-		.write = rcuhashbash_write_lock,
-		.write_lock_buckets = table_komb_mutex_write_lock_buckets,
-		.write_unlock_buckets = table_komb_mutex_write_unlock_buckets,
-	},
-	{
-		.reader_type = "table_komb_rwlock",
-		.writer_type = "table_komb_rwlock",
-		.read = rcuhashbash_read_lock,
-		.read_lock_bucket = table_komb_rwlock_read_lock_bucket,
-		.read_unlock_bucket = table_komb_rwlock_read_unlock_bucket,
-		.write = rcuhashbash_write_lock,
-		.write_lock_buckets = table_komb_rwlock_write_lock_buckets,
-		.write_unlock_buckets = table_komb_rwlock_write_unlock_buckets,
-	},
-	{
-		.reader_type = "table_komb_rwsem",
-		.writer_type = "table_komb_rwsem",
-		.read = rcuhashbash_read_lock,
-		.read_lock_bucket = table_komb_rwsem_read_lock_bucket,
-		.read_unlock_bucket = table_komb_rwsem_read_unlock_bucket,
-		.write = rcuhashbash_write_lock,
-		.write_lock_buckets = table_komb_rwsem_write_lock_buckets,
-		.write_unlock_buckets = table_komb_rwsem_write_unlock_buckets,
-	},
+//	{
+//		.reader_type = "table_komb_mutex",
+//		.writer_type = "table_komb_mutex",
+//		.read = rcuhashbash_read_lock,
+//		.read_lock_bucket = table_komb_mutex_read_lock_bucket,
+//		.read_unlock_bucket = table_komb_mutex_read_unlock_bucket,
+//		.write = rcuhashbash_write_lock,
+//		.write_lock_buckets = table_komb_mutex_write_lock_buckets,
+//		.write_unlock_buckets = table_komb_mutex_write_unlock_buckets,
+//	},
+//	{
+//		.reader_type = "table_komb_rwlock",
+//		.writer_type = "table_komb_rwlock",
+//		.read = rcuhashbash_read_lock,
+//		.read_lock_bucket = table_komb_rwlock_read_lock_bucket,
+//		.read_unlock_bucket = table_komb_rwlock_read_unlock_bucket,
+//		.write = rcuhashbash_write_lock,
+//		.write_lock_buckets = table_komb_rwlock_write_lock_buckets,
+//		.write_unlock_buckets = table_komb_rwlock_write_unlock_buckets,
+//	},
+//	{
+//		.reader_type = "table_komb_rwsem",
+//		.writer_type = "table_komb_rwsem",
+//		.read = rcuhashbash_read_lock,
+//		.read_lock_bucket = table_komb_rwsem_read_lock_bucket,
+//		.read_unlock_bucket = table_komb_rwsem_read_unlock_bucket,
+//		.write = rcuhashbash_write_lock,
+//		.write_lock_buckets = table_komb_rwsem_write_lock_buckets,
+//		.write_unlock_buckets = table_komb_rwsem_write_unlock_buckets,
+//	},
 	{
 		.reader_type = "table_aqs",
 		.writer_type = "table_aqs",
@@ -1644,7 +1659,7 @@ static void rcuhashbash_print_stats(void)
 
 static void rcuhashbash_exit(void)
 {
-	unsigned long i;
+	unsigned long i, i__, cpu;
 	int ret;
 
 	printk(KERN_ALERT "rcuhashbash exiting threads\n");
@@ -1689,7 +1704,6 @@ static void rcuhashbash_exit(void)
 	printk(KERN_ALERT "Preparing for Timing Stats\n");
 	locktime_print_timing_stats();
 	printk(KERN_ALERT "Free Timing Stats\n");
-	int i__, cpu;
 	for (i__ = 0; i__ < TIMING_NUM; i__ ++){
 		for_each_possible_cpu (cpu){
 			vfree(per_cpu(BucketTimingstats_percpu_locktime[i__], cpu));
@@ -1698,16 +1712,19 @@ static void rcuhashbash_exit(void)
 	}
 #endif
 
-#ifdef KOMB_STATS
+#if KOMB_STATS
 	komb_print_stats();
 #endif
 
 	if (thread_stats)
 		rcuhashbash_print_stats();
 
+	if(strcmp(writer_type, "table_swilock") == 0)
+		swilock_helper_exit();
+
 	kfree(thread_stats);
 	komb_free();
-	komb_rwfree();
+	//komb_rwfree();
 
 	printk(KERN_ALERT "rcuhashbash done\n");
 }
@@ -1715,7 +1732,7 @@ static void rcuhashbash_exit(void)
 static __init int rcuhashbash_init(void)
 {
 	int ret;
-	u32 i;
+	u32 i, i__, cpu;
 
 	for (i = 0; i < ARRAY_SIZE(all_ops); i++)
 		if (strcmp(reader_type, all_ops[i].reader_type) == 0 &&
@@ -1770,8 +1787,10 @@ static __init int rcuhashbash_init(void)
 			ops->init_bucket(&hash_table[i]);
 
 	komb_init(); //Add call to initialize per-cpu variables for Komb.
-	komb_rwinit();
-	komb_rwsem_init();
+	//komb_rwinit();
+	//komb_rwsem_init();
+	if(strcmp(writer_type, "table_swilock") == 0)
+		swilock_delegate_init(&hash_table->swilock);
 
 	for (i = 0; i < entries; i++) {
 		struct rcuhashbash_entry *entry;
@@ -1792,21 +1811,19 @@ static __init int rcuhashbash_init(void)
 		goto enomem;
 
 #if LOCK_MEASURE_TIME
-	int i__, cpu;
 	for (i__ = 0; i__ < TIMING_NUM; i__ ++){
 		for_each_possible_cpu(cpu){
 			per_cpu(BucketTimingstats_percpu_locktime[i__], cpu) = vzalloc(sizeof(unsigned long) * N_BUCKETS);
 		}
 		BucketTimingsamples_bucket[i__] = vzalloc(sizeof(unsigned long) * TIME_UPPER_BOUND);
 	}
-	locktime_clear_stats();
 #endif
 
 	printk(KERN_ALERT "rcuhashbash starting threads\n");
 
 	for (i = 0; i < ro + rw; i++) {
 		struct task_struct *task;
-		void *ptr;
+		//void *ptr;
 
 		if (i < ro)
 			task = kthread_create(rcuhashbash_ro_thread,
@@ -1843,7 +1860,7 @@ static __init int rcuhashbash_init(void)
 
 enomem:
 	komb_free();
-	komb_rwfree();
+	//komb_rwfree();
 	ret = -ENOMEM;
 error:
 	rcuhashbash_exit();

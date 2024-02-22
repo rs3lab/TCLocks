@@ -2,15 +2,15 @@
 
 source ../../defaults.sh
 
-locks=(table_spinlock table_aqs table_cna table_komb)
-lock_name=(table_spinlock table_aqs table_cna table_komb)
+locks=(table_swilock) #table_swilock table_spinlock table_komb)
+lock_name=(table_swilock) #table_swilock table_spinlock table_komb)
 
 lock_type=spinlock
 
 rw_writes=(100)
 rw_total=100
-buckets=(1024)
-entries_ratios=(4)
+buckets=(1024) #64 1024 16384)
+entries_ratios=(4) #1 4 16 64 512)
 
 time=${runtime}
 

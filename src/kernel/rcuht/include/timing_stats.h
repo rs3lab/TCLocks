@@ -12,7 +12,7 @@
 #include <asm/msr.h>
 #include <linux/cpu.h>
 
-#define LOCK_MEASURE_TIME 0 //1
+#define LOCK_MEASURE_TIME 1
 #define N_BUCKETS 1048576
 #define TIME_UPPER_BOUND 1048576 //131072
 
@@ -34,6 +34,8 @@ enum timing_category {
 	write_critical_section_t,
 	write_path_t,
 	combiner_loop_t,
+	combiner_loop_lockfn_t,
+	combiner_loop_unlockfn_t,
 	lock_stack_switch_t, //Waiter switch from Main->Ephemeral
 	unlock_stack_switch_t, //Waiter switch from Ephemeral->Main
 

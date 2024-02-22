@@ -2,6 +2,7 @@
 
 const char *Timingstring_locktime[TIMING_NUM] = { "write_critical_section",
 						  "write_path", "combiner_loop",
+						  "combiner_loop_lockfn", "combiner_loop_unlockfn",
 						  "lock_stack_switch",
 						  "unlock_stack_switch" };
 
@@ -29,6 +30,9 @@ static void locktime_get_timing_stats(void)
 {
 	int i, j;
 	int cpu;
+	uint64_t max_value, min_value;
+	uint64_t sampled_number;
+	uint64_t per50, update50, per75, update75, per90, update90, per99, update99, per9999, update9999;	
 
 	for (i = 0; i < TIMING_NUM; i++) {
 		Timingstats_locktime[i] = 0;
@@ -63,9 +67,9 @@ static void locktime_get_timing_stats(void)
 				MaxTimingstats_locktime[i] = per_cpu(
 					MaxTimingstats_percpu_locktime[i], cpu);
 		}
-		printk(KERN_ALERT "======== Update Sample Bucket ========\n");
-	    unsigned long max_value = 0;
-		unsigned long min_value = -1;
+		//printk(KERN_ALERT "======== Update Sample Bucket ========\n");
+	    	max_value = 0;
+		min_value = -1;
 		for_each_possible_cpu (cpu) {
 			unsigned long loop_scope = (N_BUCKETS < per_cpu(bucket_counter[i], cpu)) ? N_BUCKETS: per_cpu(bucket_counter[i], cpu);
 			for (j = 0; j < loop_scope; j++){
@@ -75,24 +79,24 @@ static void locktime_get_timing_stats(void)
 				min_value = (per_cpu(BucketTimingstats_percpu_locktime[i],cpu)[j] < min_value) ? per_cpu(BucketTimingstats_percpu_locktime[i],cpu)[j] : min_value;
 			}
 		}
-		printk(KERN_ALERT "======== Update Sample Bucket Finished. Max: %lu Min: %lu========\n", max_value, min_value);
-		unsigned long sampled_number = 0;
+		//printk(KERN_ALERT "======== Update Sample Bucket Finished. Max: %lu Min: %lu========\n", max_value, min_value);
+		sampled_number = 0;
 		for (j = 0; j < TIME_UPPER_BOUND; j++){
 			sampled_number += BucketTimingsamples_bucket[i][j];
 		}
-		printk(KERN_ALERT "======== Get Total Sample Number %lu and Counter %lu ========\n", sampled_number, Countstats_locktime[i]);
-		unsigned long per50 = sampled_number >> 1;
-		unsigned long update50 = 1;
-		unsigned long per75 = sampled_number >> 2;
-		unsigned long update75 = 1;
-		unsigned long per90 = sampled_number / 10;
-		unsigned long update90 = 1;
-		unsigned long per99 = sampled_number / 100;
-		unsigned long update99 = 1;
-		unsigned long per9999 = sampled_number / 10000;
-		unsigned long update9999 = 1;
-		sampled_number = 0 ;
-		printk(KERN_ALERT "======== Calculate Percentile ========\n");
+		//printk(KERN_ALERT "======== Get Total Sample Number %lu and Counter %lu ========\n", sampled_number, Countstats_locktime[i]);
+		 per50 = sampled_number >> 1;
+		 update50 = 1;
+		 per75 = sampled_number >> 2;
+		 update75 = 1;
+		 per90 = sampled_number / 10;
+		 update90 = 1;
+		 per99 = sampled_number / 100;
+		 update99 = 1;
+		 per9999 = sampled_number / 10000;
+		 update9999 = 1;
+		 sampled_number = 0 ;
+		//printk(KERN_ALERT "======== Calculate Percentile ========\n");
 		for (j = TIME_UPPER_BOUND - 1; j >=0; j--){
 			sampled_number += BucketTimingsamples_bucket[i][j];
 			if (update50 == 1){
@@ -127,7 +131,7 @@ static void locktime_get_timing_stats(void)
 			}
 			if ((update50 | update75 | update90 | update99 | update9999) == 0) break;
 		}
-		printk(KERN_ALERT "======== Calculate Percentile Finished ========\n");
+		//printk(KERN_ALERT "======== Calculate Percentile Finished ========\n");
 
 	}
 }
@@ -142,7 +146,7 @@ void locktime_print_timing_stats(void)
 	for (i = 0; i < TIMING_NUM; i++) {
 		if (Timingstats_locktime[i]) {
 			printk(KERN_ALERT
-			       "%s: count %lu timing %lu average %lu min %lu max %lu var %lu 50-per %lu 75-per %lu 90-per %lu 99-per %lu 99.99-per %lu\n",
+			       "%s: count %lu timing %lu average %lu min %lu max %lu \nvar %lu 50-per %lu 75-per %lu 90-per %lu 99-per %lu 99.99-per %lu\n",
 			       Timingstring_locktime[i], Countstats_locktime[i],
 			       Timingstats_locktime[i],
 			       Countstats_locktime[i] ?
@@ -156,10 +160,7 @@ void locktime_print_timing_stats(void)
 			       BucketTimingstats_locktime[i][1],
 			       BucketTimingstats_locktime[i][2],
 			       BucketTimingstats_locktime[i][3],
-			       BucketTimingstats_locktime[i][4],
-			       BucketTimingstats_locktime[i][5],
-			       BucketTimingstats_locktime[i][6],
-			       BucketTimingstats_locktime[i][7]);
+			       BucketTimingstats_locktime[i][4]);
 		} else {
 			printk(KERN_ALERT "%s: count %lu\n",
 			       Timingstring_locktime[i],
@@ -191,7 +192,7 @@ void locktime_clear_stats(void)
 				ULONG_MAX;
 			per_cpu(MaxTimingstats_percpu_locktime[i], cpu) = 0;
 			per_cpu(VarTimingstats_percpu_locktime[i], cpu) = 0;
-		    per_cpu(bucket_counter[i], cpu) = 0;
+		        per_cpu(bucket_counter[i], cpu) = 0;
 			//printk(KERN_ALERT "INITIALIZE Per CPU BucketTimingstats_percpu_locktime\n");
 			for (j = 0; j < N_BUCKETS; j++)
 				per_cpu(BucketTimingstats_percpu_locktime[i],

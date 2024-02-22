@@ -102,7 +102,7 @@ struct orig_qspinlock {
  *  9-10: tail index
  * 11-31: tail cpu (+1)
  */
-#define _Q_SET_MASK(type) (((1U << _Q_##type##_BITS) - 1) << _Q_##type##_OFFSET)
+//#define _Q_SET_MASK(type) (((1U << _Q_##type##_BITS) - 1) << _Q_##type##_OFFSET)
 #define _Q_LOCKED_OFFSET 0
 #define _Q_LOCKED_BITS 8
 #define _Q_LOCKED_MASK _Q_SET_MASK(LOCKED)

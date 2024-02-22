@@ -315,7 +315,7 @@ void orig_queued_spin_lock_slowpath(struct orig_qspinlock *lock, u32 val)
 	 */
 queue:
 	qstat_inc(qstat_lock_slowpath, true);
-pv_queue:
+//pv_queue:
 	node = this_cpu_ptr(&mcs_nodes[0]);
 	idx = node->count++;
 	tail = encode_tail(smp_processor_id(), idx);

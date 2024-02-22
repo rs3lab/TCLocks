@@ -4,6 +4,7 @@
 #ifdef KERNEL_SYNCSTRESS
 #include "qspinlock_i.h"
 #include "lib/combiner.h"
+#define ENABLE_IRQS_CHECK 0
 #define qspinlock orig_qspinlock
 #else
 #define ENABLE_IRQS_CHECK 1
@@ -12,9 +13,7 @@
 
 #define MAX_NODES 4
 #define DEFINE_KOMBSPINLOCK(x)                                                 \
-	arch_spinlock_t(x) = (arch_spinlock_t)__ORIG_QSPIN_LOCK_UNLOCKED
-
-//#define KOMB_STATS 1
+	struct qspinlock(x) = (struct qspinlock)__ORIG_QSPIN_LOCK_UNLOCKED
 
 /*
  * TODO (Correctness optimization): 
@@ -26,11 +25,11 @@ struct komb_node {
 	int count;
 	int socket_id;
 	int cpuid;
-	uint64_t rsp;
+	void* rsp;
 	struct qspinlock *lock;
 	int irqs_disabled;
 	struct task_struct *task_struct_ptr;
-	char dummy1[12];
+	char dummy1[140];
 
 	union {
 		struct {
@@ -42,7 +41,7 @@ struct komb_node {
 		};
 	};
 
-	char dummy[48];
+	char dummy[176];
 };
 
 #define _Q_COMPLETED_OFFSET (_Q_LOCKED_OFFSET + _Q_LOCKED_BITS)
@@ -69,4 +68,9 @@ extern void komb_spin_unlock(struct qspinlock *lock);
 
 struct task_struct *komb_get_current(spinlock_t *lock);
 void komb_set_current_state(spinlock_t *lock, unsigned int state);
+
+#ifdef KOMB_STATS
+void komb_print_stats(void);
+#endif
+
 #endif

@@ -159,40 +159,40 @@ static __always_inline int cna_spin_trylock(struct orig_qspinlock *lock)
 	return 0;
 }
 
-static void __init cna_init_nodes_per_cpu(unsigned int cpu)
-{
-	struct mcs_spinlock *base = per_cpu_ptr(&qnodes[0].mcs, cpu);
-	int numa_node = cpu_to_node(cpu);
-	int i;
-
-	for (i = 0; i < MAX_NODES; i++) {
-		struct cna_node *cn = (struct cna_node *)grab_mcs_node(base, i);
-
-		cn->real_numa_node = numa_node;
-		cn->encoded_tail = cna_encode_tail(cpu, i);
-		/*
-         * make sure @encoded_tail is not confused with other valid
-         * values for @locked (0 or 1)
-         */
-		WARN_ON(cn->encoded_tail <= 1);
-	}
-}
-
-static void __init cna_init_nodes(void)
-{
-	unsigned int cpu;
-
-	/*
-     * this will break on 32bit architectures, so we restrict
-     * the use of CNA to 64bit only (see arch/x86/Kconfig)
-     */
-	BUILD_BUG_ON(sizeof(struct cna_node) > sizeof(struct cna_qnode));
-	/* we store an ecoded tail word in the node's @locked field */
-	BUILD_BUG_ON(sizeof(u32) > sizeof(unsigned int));
-
-	for_each_possible_cpu (cpu)
-		cna_init_nodes_per_cpu(cpu);
-}
+//static void __init cna_init_nodes_per_cpu(unsigned int cpu)
+//{
+//	struct mcs_spinlock *base = per_cpu_ptr(&qnodes[0].mcs, cpu);
+//	int numa_node = cpu_to_node(cpu);
+//	int i;
+//
+//	for (i = 0; i < MAX_NODES; i++) {
+//		struct cna_node *cn = (struct cna_node *)grab_mcs_node(base, i);
+//
+//		cn->real_numa_node = numa_node;
+//		cn->encoded_tail = cna_encode_tail(cpu, i);
+//		/*
+//         * make sure @encoded_tail is not confused with other valid
+//         * values for @locked (0 or 1)
+//         */
+//		WARN_ON(cn->encoded_tail <= 1);
+//	}
+//}
+//
+//static void __init cna_init_nodes(void)
+//{
+//	unsigned int cpu;
+//
+//	/*
+//     * this will break on 32bit architectures, so we restrict
+//     * the use of CNA to 64bit only (see arch/x86/Kconfig)
+//     */
+//	BUILD_BUG_ON(sizeof(struct cna_node) > sizeof(struct cna_qnode));
+//	/* we store an ecoded tail word in the node's @locked field */
+//	BUILD_BUG_ON(sizeof(u32) > sizeof(unsigned int));
+//
+//	for_each_possible_cpu (cpu)
+//		cna_init_nodes_per_cpu(cpu);
+//}
 
 static __always_inline void cna_init_node(struct mcs_spinlock *node)
 {
