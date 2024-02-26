@@ -507,6 +507,7 @@ static int rcuhashbash_write_lock(u32 src_value, u32 dst_value,
 		ops->write_lock_buckets(&hash_table[src_bucket],
 					&hash_table[dst_bucket]);
 	LOCK_START_TIMING(write_critical_section_t, write_critical_section);
+	BUG_ON(smp_processor_id() != 19);
 
 	/* Find src_entry. */
 	hlist_for_each_entry (entry, &hash_table[src_bucket].head, node) {
@@ -548,6 +549,8 @@ static int rcuhashbash_write_lock(u32 src_value, u32 dst_value,
 	stats->write_moves++;
 
 unlock:
+	BUG_ON(smp_processor_id() != 19);
+
 	LOCK_END_TIMING(write_critical_section_t, write_critical_section);
 
 	if (ops->write_unlock_buckets)
@@ -1659,7 +1662,10 @@ static void rcuhashbash_print_stats(void)
 
 static void rcuhashbash_exit(void)
 {
-	unsigned long i, i__, cpu;
+	unsigned long i;
+#if LOCK_MEASURE_TIME
+	unsigned long i__, cpu;
+#endif
 	int ret;
 
 	printk(KERN_ALERT "rcuhashbash exiting threads\n");
@@ -1732,7 +1738,10 @@ static void rcuhashbash_exit(void)
 static __init int rcuhashbash_init(void)
 {
 	int ret;
-	u32 i, i__, cpu;
+	u32 i;
+#if LOCK_MEASURE_TIME
+        u32 i__, cpu;
+#endif
 
 	for (i = 0; i < ARRAY_SIZE(all_ops); i++)
 		if (strcmp(reader_type, all_ops[i].reader_type) == 0 &&

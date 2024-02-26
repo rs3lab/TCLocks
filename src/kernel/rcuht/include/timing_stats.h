@@ -12,7 +12,7 @@
 #include <asm/msr.h>
 #include <linux/cpu.h>
 
-#define LOCK_MEASURE_TIME 1
+#define LOCK_MEASURE_TIME 0 //1
 #define N_BUCKETS 1048576
 #define TIME_UPPER_BOUND 1048576 //131072
 

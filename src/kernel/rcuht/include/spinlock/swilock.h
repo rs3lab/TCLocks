@@ -58,27 +58,27 @@ struct delegation_request {
 extern struct delegation_request delegation_requests; 
 
 struct response{
-	u64 toggle;
-	char dummy[120];
+	bool toggle;
+	char dummy[127];
 };
 
 struct delegation_server{
-	struct response* responses[MAX_CORES / CORES_PER_SOCKET]; // 1 toggle bit for each thread
+	struct response responses[MAX_CORES]; // 1 toggle bit for each thread
 	struct qspinlock *lock;
 	void* server_stack_ptr;
 	int cur_client_cpu_id;
-	char dummy[100];
+	int prev_client_cpu_id;
+	// char dummy[100];
 	// for client->client jump
 	int cur_updated_response;
 	int cur_socket_id;
 	int cur_client_cpu_id_on_socket;
 };
-extern struct delegation_server *server_ptr;
 
 extern void swilock_delegate_init(struct qspinlock *lock);
 extern void swilock_delegate_exit(void);
 
-extern void swilock_delegate(struct qspinlock *lock);
-extern void swilock_delegate_finish(struct qspinlock *lock);
+//extern void swilock_delegate(struct qspinlock *lock);
+//extern void swilock_delegate_finish(struct qspinlock *lock);
 
 #endif
