@@ -128,10 +128,10 @@ struct shadow_stack {
 
 #if LOCK_MEASURE_TIME
 static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop);
-static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_lockfn);
+/*static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_lockfn);
 static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_unlockfn);
 static DEFINE_PER_CPU_ALIGNED(uint64_t, lock_stack_switch);
-static DEFINE_PER_CPU_ALIGNED(uint64_t, unlock_stack_switch);
+static DEFINE_PER_CPU_ALIGNED(uint64_t, unlock_stack_switch);*/
 #endif
 
 /*
@@ -596,7 +596,7 @@ __komb_spin_lock_longjmp(struct qspinlock *lock, int tail,
 				prefetchw(((char*)curr_node->rsp) + (64 * i));
 #endif
 
-			LOCK_START_TIMING_PER_CPU(unlock_stack_switch);
+			LOCK_START_TIMING_PER_CPU_DISABLE(unlock_stack_switch);
 			return 0;
 		}
 	}
@@ -741,7 +741,7 @@ __komb_spin_lock_slowpath(struct qspinlock *lock)
 	struct komb_node *curr_node;
 	int tail, idx;
 
-	LOCK_END_TIMING_PER_CPU(lock_stack_switch);
+	LOCK_END_TIMING_PER_CPU_DISABLE(lock_stack_switch);
 
 	curr_node = this_cpu_ptr(&komb_nodes[0]);
 	idx = curr_node->count++;
@@ -1156,16 +1156,16 @@ queue:
 #endif
 
 #if LOCK_MEASURE_TIME
-		*this_cpu_ptr(&lock_stack_switch) = UINT64_MAX;
-		*this_cpu_ptr(&unlock_stack_switch) = UINT64_MAX;
+//		*this_cpu_ptr(&lock_stack_switch) = UINT64_MAX;
+//		*this_cpu_ptr(&unlock_stack_switch) = UINT64_MAX;
 #endif
-		LOCK_START_TIMING_PER_CPU(lock_stack_switch);
+		LOCK_START_TIMING_PER_CPU_DISABLE(lock_stack_switch);
 
 		komb_spin_lock_slowpath(lock);
 
 #if WWJUMP
 #if LOCK_MEASURE_TIME
-		LOCK_START_TIMING_PER_CPU(combiner_loop_lockfn);
+		LOCK_START_TIMING_PER_CPU_DISABLE(combiner_loop_lockfn);
 #endif
 
 		ptr = this_cpu_ptr(&local_shadow_stack);
@@ -1196,7 +1196,7 @@ queue:
 			}
 		}
 #if LOCK_MEASURE_TIME
-		LOCK_END_TIMING_PER_CPU(combiner_loop_lockfn);
+		LOCK_END_TIMING_PER_CPU_DISABLE(combiner_loop_lockfn);
 #endif
 
 #endif
@@ -1257,7 +1257,7 @@ komb_spin_unlock(struct qspinlock *lock)
 	void* temp_lock_addr;
 
 #if LOCK_MEASURE_TIME
-		LOCK_START_TIMING_PER_CPU(combiner_loop_unlockfn);
+		LOCK_START_TIMING_PER_CPU_DISABLE(combiner_loop_unlockfn);
 #endif
 
 	j = 0;
@@ -1363,7 +1363,7 @@ komb_spin_unlock(struct qspinlock *lock)
 #endif
 
 #if LOCK_MEASURE_TIME
-		LOCK_END_TIMING_PER_CPU(combiner_loop_unlockfn);
+		LOCK_END_TIMING_PER_CPU_DISABLE(combiner_loop_unlockfn);
 #endif
 
 
@@ -1375,7 +1375,7 @@ komb_spin_unlock(struct qspinlock *lock)
 		ptr->irqs_disabled = false;
 		local_irq_disable();
 	}
-	LOCK_END_TIMING_PER_CPU(unlock_stack_switch);
+	LOCK_END_TIMING_PER_CPU_DISABLE(unlock_stack_switch);
 	return;
 }
 EXPORT_SYMBOL_GPL(komb_spin_unlock);

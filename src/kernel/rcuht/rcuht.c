@@ -1718,6 +1718,9 @@ static void rcuhashbash_exit(void)
 #if KOMB_STATS
 	komb_print_stats();
 #endif
+#if FFWD_STATS
+	ffwd_print_stats();
+#endif
 
 	if (thread_stats)
 		rcuhashbash_print_stats();

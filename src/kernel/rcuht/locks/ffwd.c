@@ -16,10 +16,8 @@
 #include <linux/delay.h>
 #include <linux/atomic.h>
 
-#define DELEGATION_CPU 19
-
 #if LOCK_MEASURE_TIME
-static DEFINE_PER_CPU_ALIGNED(uint64_t, delegation_loop);
+static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop);
 #endif
 
 #if DSM_DEBUG
@@ -71,6 +69,12 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct ffwd_node, ffwd_nodes[MAX_NODES]);
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct delegation_request, delegation_requests);
 DEFINE_PER_CPU_SHARED_ALIGNED(struct delegation_server, delegation_servers);
+
+#if FFWD_STATS
+DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_combiner_count);
+DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_waiters_combined);
+#endif
+
 
 __attribute__((noipa)) noinline notrace static void *get_shadow_stack_ptr(void)
 {
@@ -139,6 +143,11 @@ ffwd_execute(struct delegation_request *request)
 	incoming_rsp_ptr = &(request->main_stack_ptr);
 	outgoing_rsp_ptr = &(server_ptr->server_stack_ptr);
 
+#if LOCK_MEASURE_TIME
+	*this_cpu_ptr(&combiner_loop) = UINT64_MAX;
+	BUG_ON(smp_processor_id() != DELEGATION_CPU);
+#endif
+
 #if DEBUG_DELEGATION
 	BUG_ON(*(char *)incoming_rsp_ptr == 0);
 	//BUG_ON(*(char *)outgoing_rsp_ptr == 0);
@@ -199,6 +208,7 @@ void ffwd_execute_socket(int socket_id)
 			server_ptr->cur_client_cpu_id = request->cpu_id;
 			server_ptr->cur_client_cpu_id_on_socket =
 				request->cpu_id_on_socket;
+			server_ptr->waiters_combined = 0;
 			found_one = true;
 			ffwd_execute(request);
 			// jump to next core will be handled in delegate_finish()
@@ -210,7 +220,12 @@ void ffwd_execute_socket(int socket_id)
 #if DEBUG_DELEGATION
 		BUG_ON(i == -1);
 #endif
-		WRITE_ONCE(server_ptr->responses[i].toggle, !(READ_ONCE(server_ptr->responses[i].toggle))); 	
+		WRITE_ONCE(server_ptr->responses[i].toggle, !(READ_ONCE(server_ptr->responses[i].toggle)));
+#if FFWD_STATS
+		this_cpu_add(ffwd_waiters_combined, server_ptr->waiters_combined);
+		this_cpu_inc(ffwd_combiner_count);
+#endif
+	
 	}
 
 	// Write response
@@ -385,6 +400,14 @@ ffwd_delegate_finish(struct qspinlock *lock)
 	request = per_cpu_ptr(&delegation_requests,
 			      server_ptr->cur_client_cpu_id);
 
+#if LOCK_MEASURE_TIME
+	LOCK_END_TIMING_PER_CPU(combiner_loop);
+	LOCK_START_TIMING_PER_CPU(combiner_loop);
+#endif
+
+	BUG_ON(smp_processor_id() !=  DELEGATION_CPU);
+
+
 #if ENABLE_JUMP == 0
 	// Client -> server thread
 	incoming_rsp_ptr = &(server_ptr->server_stack_ptr);
@@ -419,9 +442,27 @@ ffwd_delegate_finish(struct qspinlock *lock)
 		}
 	}
 
+	if (!found_next) {
+		//Do another run from start.
+		i = 0;
+		for (; i < CORES_PER_SOCKET; i++) {
+			if (i == server_ptr->cur_client_cpu_id_on_socket)
+				continue;
+			next_request =
+				per_cpu_ptr(&delegation_requests, i + socket_offset);
+			// Check if has request
+			// i.e. toggle bit differs in request and reponse
+			if (READ_ONCE(next_request->toggle) !=
+			    READ_ONCE(server_ptr->responses[i].toggle)) {
+				found_next = true;
+				break;
+			}
+		}
+	}	
+
 	server_ptr->prev_client_cpu_id = server_ptr->cur_client_cpu_id;
 
-	if (found_next) {
+	if (found_next && !need_resched()) {
 		print_debug("jump [%d]->[%d]", request->cpu_id,
 			    next_request->cpu_id);
 #if ENABLE_PREFETCH
@@ -433,6 +474,7 @@ ffwd_delegate_finish(struct qspinlock *lock)
 		server_ptr->cur_client_cpu_id = next_request->cpu_id;
 		server_ptr->cur_client_cpu_id_on_socket =
 			next_request->cpu_id_on_socket;
+		server_ptr->waiters_combined++;
 		// Client -> next client with request on same socket
 		incoming_rsp_ptr = &(next_request->main_stack_ptr);
 	} else {
@@ -485,7 +527,7 @@ void ffwd_delegate_init(struct qspinlock *lock)
 		ptr->toggle = false;
 
 #if LOCK_MEASURE_TIME
-		*per_cpu_ptr(&delegation_loop, i) = UINT64_MAX;
+		*per_cpu_ptr(&combiner_loop, i) = UINT64_MAX;
 #endif
 	}
 
@@ -500,6 +542,10 @@ void ffwd_delegate_init(struct qspinlock *lock)
 		//server_ptr->responses[i] = (struct response *)vzalloc(sizeof(struct response));
 		server_ptr->responses[i].toggle = false;
 	}
+
+#if LOCK_MEASURE_TIME
+	*per_cpu_ptr(&do_timing, DELEGATION_CPU) = true;
+#endif
 
 	// Init server thread
 	hthread = kthread_create(ffwd_thread, NULL,
@@ -567,3 +613,20 @@ void ffwd_helper_exit(void)
 		printk(KERN_ALERT "ffwd helper thread returned error %d\n",
 		       ret);
 }
+
+#if FFWD_STATS
+void ffwd_print_stats(void)
+ {
+	int i;
+	uint64_t total_counters[2] = { 0 };
+	printk(KERN_ALERT "======== FFWD spinlock stats ========\n");
+	for_each_online_cpu (i) {
+	       total_counters[0] += per_cpu(ffwd_combiner_count, i);
+	       total_counters[1] += per_cpu(ffwd_waiters_combined, i);
+	}
+
+       printk(KERN_ALERT "Combiner_count: %lld\n", total_counters[0]);
+       printk(KERN_ALERT "waiter_combined: %lld\n", total_counters[1]);
+ }
+#endif
+

@@ -5,12 +5,16 @@
 #include "komb.h"
 
 // Delegation settings
-#define MAX_CORES 20
-#define CORES_PER_SOCKET 20
+#define MAX_CORES 48
+#define CORES_PER_SOCKET 48
+#define DELEGATION_CPU 47
 #define ENABLE_JUMP 1       // Context switch from client to client
 #define ENABLE_PREFETCH 1   // Prefetch before context switch
 
 #define DEBUG_DELEGATION 0
+#define FFWD_STATS 1
+
+#define CACHELINE_ALIGNEMENT 64
 
 #define DEFINE_FFWD(x)                                                      \
 	struct orig_qspinlock(x) = (struct orig_qspinlock)__ORIG_QSPIN_LOCK_UNLOCKED
@@ -40,6 +44,10 @@ extern void ffwd_init(struct qspinlock *lock);
 extern void ffwd_lock(struct qspinlock *lock);
 extern void ffwd_unlock(struct qspinlock *lock);
 
+#if FFWD_STATS
+extern void ffwd_print_stats(void);
+#endif
+
 /********************************************************************************
  * Delegation
  * ******************************************************************************/
@@ -54,11 +62,11 @@ struct delegation_request {
 			int socket_id;              // 4
 			int cpu_id_on_socket;       // 4
 		};
-		char alignment[128];             // pad to 128-byte
+		char alignment[CACHELINE_ALIGNEMENT];             // pad to 128-byte
 	};
 	union {
 		bool toggle;                // 1 client write only; request active when != request toggle
-		char alignment1[128];
+		char alignment1[CACHELINE_ALIGNEMENT];
 	};
 };
 
@@ -67,7 +75,7 @@ extern struct delegation_request delegation_requests;
 struct response {
 	union {
 		bool toggle;
-		char alignment[128];
+		char alignment[CACHELINE_ALIGNEMENT];
 	};
 } ____cacheline_aligned;
 
@@ -81,8 +89,9 @@ struct delegation_server {
 			int cur_updated_response;
 			int cur_socket_id;
 			int cur_client_cpu_id_on_socket;
+			int waiters_combined;
 		};
-		char alignment[128];
+		char alignment[CACHELINE_ALIGNEMENT];
 	};
 	struct response responses[MAX_CORES]; // 1 toggle bit for each thread
 };
