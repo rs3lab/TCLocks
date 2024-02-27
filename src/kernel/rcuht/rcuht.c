@@ -46,7 +46,7 @@
 #include "spinlock/aqs.h"
 #include "spinlock/cna.h"
 #include "spinlock/komb.h"
-#include "spinlock/swilock.h"
+#include "spinlock/ffwd.h"
 //#include "rwlock/komb_rwlock.h"
 #include "rwlock/rwaqs_ntrl.h"
 #include "rwlock/rwaqs_rp.h"
@@ -123,7 +123,7 @@ struct rcuhashbash_bucket {
 		struct rw_semaphore rwsem;
 		struct percpu_rw_semaphore percpu_rwsem;
 		struct orig_qspinlock komb;
-		struct orig_qspinlock swilock;
+		struct orig_qspinlock ffwd;
 		//struct komb_rwlock krwlock;
 		//struct komb_mutex mutex_komb;
 		//struct komb_rwsem rwsem_komb;
@@ -171,8 +171,8 @@ DECLARE_TABLE_LOCK(table_spinlock, DEFINE_SPINLOCK, spin_lock, spin_unlock,
 DECLARE_TABLE_LOCK(table_komb, DEFINE_KOMBSPINLOCK, komb_spin_lock,
 		   komb_spin_unlock, komb_spin_lock, komb_spin_unlock);
 
-DECLARE_TABLE_LOCK(table_swilock, DEFINE_SWILOCK, swi_lock,
-		                   swi_unlock, swi_lock, swi_unlock);
+DECLARE_TABLE_LOCK(table_ffwd, DEFINE_FFWD, ffwd_lock,
+		                   ffwd_unlock, ffwd_lock, ffwd_unlock);
 
 //DECLARE_TABLE_LOCK(table_komb_mutex, DEFINE_KOMBMUTEX, komb_mutex_lock,
 //		   komb_mutex_unlock, komb_mutex_lock, komb_mutex_unlock);
@@ -507,7 +507,6 @@ static int rcuhashbash_write_lock(u32 src_value, u32 dst_value,
 		ops->write_lock_buckets(&hash_table[src_bucket],
 					&hash_table[dst_bucket]);
 	LOCK_START_TIMING(write_critical_section_t, write_critical_section);
-	BUG_ON(smp_processor_id() != 19);
 
 	/* Find src_entry. */
 	hlist_for_each_entry (entry, &hash_table[src_bucket].head, node) {
@@ -549,8 +548,6 @@ static int rcuhashbash_write_lock(u32 src_value, u32 dst_value,
 	stats->write_moves++;
 
 unlock:
-	BUG_ON(smp_processor_id() != 19);
-
 	LOCK_END_TIMING(write_critical_section_t, write_critical_section);
 
 	if (ops->write_unlock_buckets)
@@ -1381,14 +1378,14 @@ static struct rcuhashbash_ops all_ops[] = {
 		.write_unlock_buckets = table_spinlock_write_unlock_buckets,
 	},
         {
-                .reader_type = "table_swilock",
-                .writer_type = "table_swilock",
+                .reader_type = "table_ffwd",
+                .writer_type = "table_ffwd",
                 .read = rcuhashbash_read_lock,
-                .read_lock_bucket = table_swilock_read_lock_bucket,
-                .read_unlock_bucket = table_swilock_read_unlock_bucket,
+                .read_lock_bucket = table_ffwd_read_lock_bucket,
+                .read_unlock_bucket = table_ffwd_read_unlock_bucket,
                 .write = rcuhashbash_write_lock,
-                .write_lock_buckets = table_swilock_write_lock_buckets,
-                .write_unlock_buckets = table_swilock_write_unlock_buckets,
+                .write_lock_buckets = table_ffwd_write_lock_buckets,
+                .write_unlock_buckets = table_ffwd_write_unlock_buckets,
         },
 	{
 		.reader_type = "table_komb",
@@ -1725,8 +1722,8 @@ static void rcuhashbash_exit(void)
 	if (thread_stats)
 		rcuhashbash_print_stats();
 
-	if(strcmp(writer_type, "table_swilock") == 0)
-		swilock_helper_exit();
+	if(strcmp(writer_type, "table_ffwd") == 0)
+		ffwd_helper_exit();
 
 	kfree(thread_stats);
 	komb_free();
@@ -1798,8 +1795,8 @@ static __init int rcuhashbash_init(void)
 	komb_init(); //Add call to initialize per-cpu variables for Komb.
 	//komb_rwinit();
 	//komb_rwsem_init();
-	if(strcmp(writer_type, "table_swilock") == 0)
-		swilock_delegate_init(&hash_table->swilock);
+	if(strcmp(writer_type, "table_ffwd") == 0)
+		ffwd_delegate_init(&hash_table->ffwd);
 
 	for (i = 0; i < entries; i++) {
 		struct rcuhashbash_entry *entry;

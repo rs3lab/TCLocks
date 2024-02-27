@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2024 Vishal Gupta, Kumar Kartikeya Dwivedi, Sixiao Xu
 
-#include "spinlock/swilock.h"
+#include "spinlock/ffwd.h"
 #include "spinlock/komb.h"
 #include "timing_stats.h"
 
@@ -67,7 +67,7 @@ static DEFINE_PER_CPU_ALIGNED(uint64_t, delegation_loop);
 
 static struct task_struct *hthread;
 
-DEFINE_PER_CPU_SHARED_ALIGNED(struct swi_node, swi_nodes[MAX_NODES]);
+DEFINE_PER_CPU_SHARED_ALIGNED(struct ffwd_node, ffwd_nodes[MAX_NODES]);
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct delegation_request, delegation_requests);
 DEFINE_PER_CPU_SHARED_ALIGNED(struct delegation_server, delegation_servers);
@@ -96,7 +96,7 @@ static noinline u64 flip_ith_bit(u64 number, int pos)
 
 void acquire_tas(struct qspinlock *lock)
 {
-	struct swi_node *swi_node;
+	struct ffwd_node *ffwd_node;
 
 	while (1) {
 		if (atomic_cmpxchg_acquire(&lock->val, 0, _Q_LOCKED_VAL) == 0)
@@ -104,14 +104,14 @@ void acquire_tas(struct qspinlock *lock)
 	}
 	// print_debug("delegate thread lock acquired");
 	// Mark delegate, to ensure unlock with delegate_finish
-	swi_node = this_cpu_ptr(&swi_nodes[0]);
-	swi_node->is_delegate = true;
+	ffwd_node = this_cpu_ptr(&ffwd_nodes[0]);
+	ffwd_node->is_delegate = true;
 }
 
 void release_tas(struct qspinlock *lock)
 {
-	struct swi_node *swi_node = this_cpu_ptr(&swi_nodes[0]);
-	swi_node->is_delegate = false;
+	struct ffwd_node *ffwd_node = this_cpu_ptr(&ffwd_nodes[0]);
+	ffwd_node->is_delegate = false;
 	// Release TAS lock
 	smp_store_release(&lock->locked, 0);
 	// print_debug("delegate thread lock released");
@@ -126,14 +126,12 @@ void release_tas(struct qspinlock *lock)
 #pragma GCC push_options
 #pragma GCC optimize("O3")
 __attribute__((noipa)) noinline notrace static void
-swi_delegate_execute(struct delegation_request *request)
+ffwd_execute(struct delegation_request *request)
 {
 	void *incoming_rsp_ptr, *outgoing_rsp_ptr;
 	struct delegation_server *server_ptr = per_cpu_ptr(&delegation_servers, DELEGATION_CPU);
 
-#if DEBUG_DELEGATION
 	print_debug("delegate [%d]", request->cpu_id);
-#endif
 
 	server_ptr->cur_client_cpu_id = request->cpu_id;
 
@@ -141,8 +139,10 @@ swi_delegate_execute(struct delegation_request *request)
 	incoming_rsp_ptr = &(request->main_stack_ptr);
 	outgoing_rsp_ptr = &(server_ptr->server_stack_ptr);
 
+#if DEBUG_DELEGATION
 	BUG_ON(*(char *)incoming_rsp_ptr == 0);
 	//BUG_ON(*(char *)outgoing_rsp_ptr == 0);
+#endif
 
 	komb_context_switch(incoming_rsp_ptr, outgoing_rsp_ptr);
 }
@@ -151,9 +151,10 @@ swi_delegate_execute(struct delegation_request *request)
 /*****
  * Execute requests on a socket, update response together
  * ******/
-void swi_delegate_execute_socket(int socket_id)
+void ffwd_execute_socket(int socket_id)
 {
 #if ENABLE_JUMP == 0
+
 	BUG_ON(true); //TODO: Fix the responses
 	//u64 updated_response;
 	int socket_offset, i;
@@ -169,7 +170,7 @@ void swi_delegate_execute_socket(int socket_id)
 		if (READ_ONCE(request->toggle) !=
 		    READ_ONCE(server_ptr->responses[i].toggle)) {
 			// LOCK_START_TIMING_PER_CPU(delegation_loop);
-			swi_delegate_execute(request);
+			ffwd_execute(request);
 			// Update toggle bit
 			// updated_response = flip_ith_bit(updated_response, i);
 			// LOCK_END_TIMING_PER_CPU(delegation_loop);
@@ -199,14 +200,16 @@ void swi_delegate_execute_socket(int socket_id)
 			server_ptr->cur_client_cpu_id_on_socket =
 				request->cpu_id_on_socket;
 			found_one = true;
-			swi_delegate_execute(request);
+			ffwd_execute(request);
 			// jump to next core will be handled in delegate_finish()
 			break;
 		}
 	}
 	if(found_one) {
 		i = server_ptr->prev_client_cpu_id;
+#if DEBUG_DELEGATION
 		BUG_ON(i == -1);
+#endif
 		WRITE_ONCE(server_ptr->responses[i].toggle, !(READ_ONCE(server_ptr->responses[i].toggle))); 	
 	}
 
@@ -216,15 +219,13 @@ void swi_delegate_execute_socket(int socket_id)
 #endif
 }
 
-int swi_delegate_thread(void *args)
+int ffwd_thread(void *args)
 {
 	int i;
 
-	print_debug("swilock delegate thread start");
+	print_debug("ffwd delegate thread start");
 	while (!kthread_should_stop()) {
-#if DEBUG_DELEGATION
 		print_debug("delegation thread wake up");
-#endif
 		if (kthread_should_stop()) {
 			break;
 		}
@@ -233,7 +234,7 @@ int swi_delegate_thread(void *args)
 		while (!kthread_should_stop()) {
 			// Iterate through each socket
 			for (i = 0; i < MAX_CORES / CORES_PER_SOCKET; i++) {
-				swi_delegate_execute_socket(i);
+				ffwd_execute_socket(i);
 				if (need_resched()) {
 					preempt_enable();
 					schedule();
@@ -241,9 +242,7 @@ int swi_delegate_thread(void *args)
 				}
 			}
 		}
-#if DEBUG_DELEGATION
 		print_debug("delegation thread release lock");
-#endif
 		// release_tas(server_ptr->lock);
 	}
 	return 0;
@@ -259,7 +258,7 @@ int swi_delegate_thread(void *args)
  * 3. Set up request, wait for response
  * *******/
 __attribute__((noipa)) noinline notrace static void
-__swilock_delegate_slowpath(struct qspinlock *lock)
+__ffwd_delegate_slowpath(struct qspinlock *lock)
 {
 	struct delegation_request *request;
         struct delegation_server *server_ptr;
@@ -282,11 +281,12 @@ __swilock_delegate_slowpath(struct qspinlock *lock)
 
 	// Wait for the server to execute request
 	// i.e. toggle bit != toggle bit on server
-#if DEBUG_DELEGATION
 	print_debug("wait on toggle bit [%d]", toggle);
-#endif
 	while (READ_ONCE(request->toggle) != READ_ONCE(server_ptr->responses[cpu_id_on_socket].toggle)) {
+
+#if DEBUG_DELEGATION
 		BUG_ON(READ_ONCE(request->toggle) != toggle);
+#endif
 		cpu_relax();
 		if (need_resched()) {
 			preempt_enable();
@@ -295,9 +295,7 @@ __swilock_delegate_slowpath(struct qspinlock *lock)
 		}
 	}
 	// LOCK_END_TIMING_PER_CPU(delegation_loop);
-#if DEBUG_DELEGATION
 	print_debug("wake up");
-#endif
 }
 
 /*******
@@ -306,7 +304,7 @@ __swilock_delegate_slowpath(struct qspinlock *lock)
 #pragma GCC push_options
 #pragma GCC optimize("O3")
 __attribute__((noipa)) noinline notrace void
-swilock_delegate_slowpath(struct qspinlock *lock)
+ffwd_delegate_slowpath(struct qspinlock *lock)
 {
 	asm volatile("pushq %%rbp\n"
 		     "pushq %%rbx\n"
@@ -329,7 +327,7 @@ swilock_delegate_slowpath(struct qspinlock *lock)
 		     : "i"(get_shadow_stack_ptr)
 		     : "memory");
 
-	__swilock_delegate_slowpath(lock);
+	__ffwd_delegate_slowpath(lock);
 
 	asm volatile("callq %P0\n"
 		     "movq %%rsp, (%%rax)\n"
@@ -359,9 +357,9 @@ swilock_delegate_slowpath(struct qspinlock *lock)
 // * 1. Called by client thread, to replace lock()
 // * ********/
 //__attribute__((noipa)) noinline notrace void
-//swilock_delegate(struct qspinlock *lock)
+//ffwd_delegate(struct qspinlock *lock)
 //{
-//	swilock_delegate_slowpath(lock);
+//	ffwd_delegate_slowpath(lock);
 //}
 
 /*********
@@ -369,7 +367,7 @@ swilock_delegate_slowpath(struct qspinlock *lock)
  * Executed by server thread
  * ********/
 __attribute__((noipa)) noinline notrace void
-swilock_delegate_finish(struct qspinlock *lock)
+ffwd_delegate_finish(struct qspinlock *lock)
 {
 	struct delegation_request *request;
 	struct delegation_server *server_ptr;
@@ -383,9 +381,7 @@ swilock_delegate_finish(struct qspinlock *lock)
 #endif
 	server_ptr = per_cpu_ptr(&delegation_servers, DELEGATION_CPU);
 
-#if DEBUG_DELEGATION
 	print_debug("finish [%d]", server_ptr->cur_client_cpu_id);
-#endif
 	request = per_cpu_ptr(&delegation_requests,
 			      server_ptr->cur_client_cpu_id);
 
@@ -394,8 +390,9 @@ swilock_delegate_finish(struct qspinlock *lock)
 	incoming_rsp_ptr = &(server_ptr->server_stack_ptr);
 	outgoing_rsp_ptr = &(request->main_stack_ptr);
 
+#if DEBUG_DELEGATION
 	BUG_ON(*(char *)incoming_rsp_ptr == 0);
-
+#endif
 	komb_context_switch(incoming_rsp_ptr, outgoing_rsp_ptr);
 	return;
 #else
@@ -425,10 +422,8 @@ swilock_delegate_finish(struct qspinlock *lock)
 	server_ptr->prev_client_cpu_id = server_ptr->cur_client_cpu_id;
 
 	if (found_next) {
-#if DEBUG_DELEGATION
 		print_debug("jump [%d]->[%d]", request->cpu_id,
 			    next_request->cpu_id);
-#endif
 #if ENABLE_PREFETCH
 		rsp_ptr = next_request->main_stack_ptr;
 		prefetchw(rsp_ptr);
@@ -441,10 +436,8 @@ swilock_delegate_finish(struct qspinlock *lock)
 		// Client -> next client with request on same socket
 		incoming_rsp_ptr = &(next_request->main_stack_ptr);
 	} else {
-#if DEBUG_DELEGATION
 		print_debug("back [%d]->[s]",
 			    server_ptr->cur_client_cpu_id_on_socket);
-#endif
 		// Jump back to server
 		incoming_rsp_ptr = &(server_ptr->server_stack_ptr);
 	}
@@ -455,8 +448,9 @@ swilock_delegate_finish(struct qspinlock *lock)
 
 	outgoing_rsp_ptr = &(request->main_stack_ptr);
 
+#if DEBUG_DELEGATION
 	BUG_ON(*(char *)incoming_rsp_ptr == 0);
-
+#endif
 	komb_context_switch(incoming_rsp_ptr, outgoing_rsp_ptr);
 	return;
 #endif
@@ -468,13 +462,13 @@ swilock_delegate_finish(struct qspinlock *lock)
  * 
  * ************************************************************/
 
-void swilock_delegate_init(struct qspinlock *lock)
+void ffwd_delegate_init(struct qspinlock *lock)
 {
 	int i;
 	void *stack_ptr;
 	struct delegation_request *ptr;
 	struct delegation_server *server_ptr;
-	print_debug("swilock delegate thread init\n");
+	print_debug("ffwd delegate thread init\n");
 
 	// Init delegation request for each cpu
 	for_each_possible_cpu (i) {
@@ -508,27 +502,27 @@ void swilock_delegate_init(struct qspinlock *lock)
 	}
 
 	// Init server thread
-	hthread = kthread_create(swi_delegate_thread, NULL,
-				 "swi_delegate_thread");
+	hthread = kthread_create(ffwd_thread, NULL,
+				 "ffwd_thread");
 	// Bind delegation thread to core 19 (current VM: 20 cores)
 	kthread_bind(hthread, DELEGATION_CPU);
 	if (hthread) {
 		wake_up_process(hthread);
 	} else {
-		printk(KERN_ERR "failed to create swilock delegate thread\n");
+		printk(KERN_ERR "failed to create ffwd delegate thread\n");
 	}
 }
 
-void swilock_delegate_exit(void)
+void ffwd_delegate_exit(void)
 {
 	//msleep(2000);  // Wait for remaining task to finish
 	int ret = kthread_stop(hthread);
 	int i;
 
-	print_debug("swilock delegate thread exit\n");
+	print_debug("ffwd delegate thread exit\n");
 
 	if (ret) {
-		printk(KERN_ALERT "swilock delegate thread returned error %d\n",
+		printk(KERN_ALERT "ffwd delegate thread returned error %d\n",
 		       ret);
 	}
 
@@ -538,29 +532,38 @@ void swilock_delegate_exit(void)
 	}
 }
 
-__attribute__((noipa)) noinline notrace void swi_lock(struct qspinlock *lock)
+__attribute__((noipa)) noinline notrace void ffwd_lock(struct qspinlock *lock)
 {
 	int i;
 	struct delegation_server *server_ptr = per_cpu_ptr(&delegation_servers, DELEGATION_CPU);
 
-	swilock_delegate_slowpath(lock);
+	ffwd_delegate_slowpath(lock);
+
+#if DEBUG_DELEGATION
 	BUG_ON(smp_processor_id() != DELEGATION_CPU); // Executed on delegation CPU
+#endif
 	i = server_ptr->prev_client_cpu_id;
+
+#if DEBUG_DELEGATION
 	BUG_ON(i == DELEGATION_CPU);
+#endif
 	if(i != -1)
 		WRITE_ONCE(server_ptr->responses[i].toggle, !(READ_ONCE(server_ptr->responses[i].toggle))); 
 }
 
-__attribute__((noipa)) noinline notrace void swi_unlock(struct qspinlock *lock)
+__attribute__((noipa)) noinline notrace void ffwd_unlock(struct qspinlock *lock)
 {
+
+#if DEBUG_DELEGATION
 	BUG_ON(smp_processor_id() != DELEGATION_CPU); // Executed on delegation CPU
-	swilock_delegate_finish(lock);
+#endif
+	ffwd_delegate_finish(lock);
 }
 
-void swilock_helper_exit(void)
+void ffwd_helper_exit(void)
 {
 	int ret = kthread_stop(hthread);
 	if (ret)
-		printk(KERN_ALERT "swilock helper thread returned error %d\n",
+		printk(KERN_ALERT "ffwd helper thread returned error %d\n",
 		       ret);
 }

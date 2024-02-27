@@ -25,7 +25,7 @@ $(STRESSMOD)-objs += locks/komb.o
 $(STRESSMOD)-objs += timing_stats.o
 $(STRESSMOD)-objs += lib/combiner.o
 
-$(STRESSMOD)-objs += locks/swilock_delegate.o
+$(STRESSMOD)-objs += locks/ffwd.o
 
 ccflags-y := -g -DDEBUG -DKERNEL_SYNCSTRESS -I$(src)/include/ -I$(src)/spinlock/ -Werror
 

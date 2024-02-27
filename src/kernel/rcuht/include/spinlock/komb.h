@@ -20,16 +20,20 @@
  * Add for BIG ENDIAN
  */
 struct komb_node {
-	struct komb_node *next;
-	int tail;
-	int count;
-	int socket_id;
-	int cpuid;
-	void* rsp;
-	struct qspinlock *lock;
-	int irqs_disabled;
-	struct task_struct *task_struct_ptr;
-	char dummy1[140];
+	union{
+		struct {
+			struct komb_node *next;
+			int tail;
+			int count;
+			int socket_id;
+			int cpuid;
+			void* rsp;
+			struct qspinlock *lock;
+			int irqs_disabled;
+			struct task_struct *task_struct_ptr;
+		};
+		char alignment[128];
+	};
 
 	union {
 		struct {
@@ -39,9 +43,8 @@ struct komb_node {
 		struct {
 			u16 locked_completed;
 		};
+		char alignment1[128];
 	};
-
-	char dummy[176];
 };
 
 #define _Q_COMPLETED_OFFSET (_Q_LOCKED_OFFSET + _Q_LOCKED_BITS)

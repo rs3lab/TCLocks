@@ -2,8 +2,8 @@
 
 source ../../defaults.sh
 
-locks=(table_swilock) #table_swilock table_spinlock table_komb)
-lock_name=(table_swilock) #table_swilock table_spinlock table_komb)
+locks=(table_komb) #table_swilock table_spinlock table_komb)
+lock_name=(table_komb) #table_swilock table_spinlock table_komb)
 
 lock_type=spinlock
 
