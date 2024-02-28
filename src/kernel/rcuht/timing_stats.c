@@ -4,7 +4,8 @@ const char *Timingstring_locktime[TIMING_NUM] = { "write_critical_section",
 						  "write_path", "combiner_loop",
 						  "combiner_loop_lockfn", "combiner_loop_unlockfn",
 						  "lock_stack_switch",
-						  "unlock_stack_switch" };
+						  "unlock_stack_switch",
+						  "ffwd_combiner_loop", "ffwd_combiner_loop_unlockfn"};
 
 unsigned long Timingstats_locktime[TIMING_NUM];
 DEFINE_PER_CPU(unsigned long[TIMING_NUM], Timingstats_percpu_locktime);

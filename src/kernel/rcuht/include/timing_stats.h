@@ -38,6 +38,8 @@ enum timing_category {
 	combiner_loop_unlockfn_t,
 	lock_stack_switch_t, //Waiter switch from Main->Ephemeral
 	unlock_stack_switch_t, //Waiter switch from Ephemeral->Main
+	ffwd_combiner_loop_t,
+	ffwd_combiner_loop_unlockfn_t,
 
 	TIMING_NUM,
 };
@@ -160,7 +162,7 @@ static inline void update_timing_stats(unsigned long diff, int name)
 			end = locktime_timing_end();                           \
 			barrier();                                             \
 			update_timing_stats((end - (*this_cpu_ptr(&name))),    \
-					    name##_t);                         \
+					    name##_t); *this_cpu_ptr(&name) = UINT64_MAX; 			\
 		}                                                              \
 	} while (0)
 #else

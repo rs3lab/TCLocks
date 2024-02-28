@@ -233,16 +233,11 @@ static struct task_struct **tasks;
 
 struct stats *thread_stats;
 
-struct rcu_random_state {
-	unsigned long rrs_state;
-	long rrs_count;
-};
-
 /*
  * Crude but fast random-number generator.  Uses a linear congruential
  * generator, with occasional help from cpu_clock().
  */
-static unsigned long rcu_random(struct rcu_random_state *rrsp)
+unsigned long rcu_random(struct rcu_random_state *rrsp)
 {
 	if (--rrsp->rrs_count < 0) {
 		rrsp->rrs_state +=

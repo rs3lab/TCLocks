@@ -1,6 +1,13 @@
 #ifndef __RCU_HT_H_
 #define __RCU_HT_H_
 
+struct rcu_random_state {
+	unsigned long rrs_state;
+	long rrs_count;
+};
+
+extern unsigned long rcu_random(struct rcu_random_state *rrsp);
+
 #define DECLARE_TABLE_LOCK(l, linit, wl, wul, rl, rul)                         \
                                                                                \
 	static __cacheline_aligned_in_smp linit(l);                            \

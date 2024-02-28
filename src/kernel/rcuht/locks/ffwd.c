@@ -17,7 +17,8 @@
 #include <linux/atomic.h>
 
 #if LOCK_MEASURE_TIME
-static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop);
+static DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_combiner_loop);
+static DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_combiner_loop_unlockfn);
 #endif
 
 #if DSM_DEBUG
@@ -73,6 +74,8 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct delegation_server, delegation_servers);
 #if FFWD_STATS
 DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_combiner_count);
 DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_waiters_combined);
+DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_waiter_cacheline_count_total);
+DEFINE_PER_CPU_ALIGNED(uint64_t, ffwd_waiter_cacheline_count);
 #endif
 
 
@@ -143,12 +146,8 @@ ffwd_execute(struct delegation_request *request)
 	incoming_rsp_ptr = &(request->main_stack_ptr);
 	outgoing_rsp_ptr = &(server_ptr->server_stack_ptr);
 
-#if LOCK_MEASURE_TIME
-	*this_cpu_ptr(&combiner_loop) = UINT64_MAX;
-	BUG_ON(smp_processor_id() != DELEGATION_CPU);
-#endif
-
 #if DEBUG_DELEGATION
+	BUG_ON(smp_processor_id() != DELEGATION_CPU);
 	BUG_ON(*(char *)incoming_rsp_ptr == 0);
 	//BUG_ON(*(char *)outgoing_rsp_ptr == 0);
 #endif
@@ -164,9 +163,9 @@ void ffwd_execute_socket(int socket_id)
 {
 #if ENABLE_JUMP == 0
 
-	BUG_ON(true); //TODO: Fix the responses
 	//u64 updated_response;
 	int socket_offset, i;
+	struct delegation_server *server_ptr = per_cpu_ptr(&delegation_servers, DELEGATION_CPU);
 
 	//updated_response = server_ptr->responses[socket_id].toggle;
 	// Iterate through each core on the socket
@@ -178,15 +177,20 @@ void ffwd_execute_socket(int socket_id)
 		// i.e. toggle bit differs in request and reponse
 		if (READ_ONCE(request->toggle) !=
 		    READ_ONCE(server_ptr->responses[i].toggle)) {
-			// LOCK_START_TIMING_PER_CPU(delegation_loop);
+#if LOCK_MEASURE_TIME
+			LOCK_START_TIMING_PER_CPU(ffwd_combiner_loop);
+#endif 
 			ffwd_execute(request);
+
 			// Update toggle bit
-			// updated_response = flip_ith_bit(updated_response, i);
-			// LOCK_END_TIMING_PER_CPU(delegation_loop);
+			WRITE_ONCE(server_ptr->responses[i].toggle, !(READ_ONCE(server_ptr->responses[i].toggle)));
+
+#if LOCK_MEASURE_TIME
+			LOCK_END_TIMING_PER_CPU(ffwd_combiner_loop);
+#endif
 		}
 	}
 	// Write response
-	//WRITE_ONCE(server_ptr->responses[socket_id].toggle, updated_response);
 
 #else
 	int socket_offset, i;
@@ -205,6 +209,11 @@ void ffwd_execute_socket(int socket_id)
 		// Check if has request
 		// i.e. toggle bit differs in request and reponse
 		if (READ_ONCE(request->toggle) != READ_ONCE(server_ptr->responses[i].toggle)) {
+#if LOCK_MEASURE_TIME
+			*this_cpu_ptr(&ffwd_combiner_loop) = UINT64_MAX;
+			BUG_ON(smp_processor_id() != DELEGATION_CPU);
+#endif
+
 			server_ptr->cur_client_cpu_id = request->cpu_id;
 			server_ptr->cur_client_cpu_id_on_socket =
 				request->cpu_id_on_socket;
@@ -393,20 +402,20 @@ ffwd_delegate_finish(struct qspinlock *lock)
 	struct delegation_request *next_request;
 	int socket_id, socket_offset, i;
 	void *rsp_ptr;
+	int cacheline_count;
 #endif
+
+	LOCK_START_TIMING_PER_CPU(ffwd_combiner_loop_unlockfn);
+
 	server_ptr = per_cpu_ptr(&delegation_servers, DELEGATION_CPU);
 
 	print_debug("finish [%d]", server_ptr->cur_client_cpu_id);
 	request = per_cpu_ptr(&delegation_requests,
 			      server_ptr->cur_client_cpu_id);
 
-#if LOCK_MEASURE_TIME
-	LOCK_END_TIMING_PER_CPU(combiner_loop);
-	LOCK_START_TIMING_PER_CPU(combiner_loop);
-#endif
-
+#if DEBUG_DELEGATION
 	BUG_ON(smp_processor_id() !=  DELEGATION_CPU);
-
+#endif
 
 #if ENABLE_JUMP == 0
 	// Client -> server thread
@@ -416,6 +425,9 @@ ffwd_delegate_finish(struct qspinlock *lock)
 #if DEBUG_DELEGATION
 	BUG_ON(*(char *)incoming_rsp_ptr == 0);
 #endif
+
+	LOCK_END_TIMING_PER_CPU(ffwd_combiner_loop_unlockfn);
+
 	komb_context_switch(incoming_rsp_ptr, outgoing_rsp_ptr);
 	return;
 #else
@@ -424,13 +436,22 @@ ffwd_delegate_finish(struct qspinlock *lock)
 	//	flip_ith_bit(server_ptr->cur_updated_response,
 	//		     server_ptr->cur_client_cpu_id_on_socket);
 	// Find next core with request on same socket
+
+#if LOCK_MEASURE_TIME
+	LOCK_END_TIMING_PER_CPU(ffwd_combiner_loop);
+	LOCK_START_TIMING_PER_CPU(ffwd_combiner_loop);
+#endif
+
 	found_next = false;
 	next_request = NULL;
 	socket_id = server_ptr->cur_socket_id;
 	socket_offset = socket_id * CORES_PER_SOCKET;
 	i = server_ptr->cur_client_cpu_id_on_socket + 1;
+	
+	cacheline_count = 0;
 
 	for (; i < CORES_PER_SOCKET; i++) {
+		cacheline_count++;
 		next_request =
 			per_cpu_ptr(&delegation_requests, i + socket_offset);
 		// Check if has request
@@ -446,6 +467,7 @@ ffwd_delegate_finish(struct qspinlock *lock)
 		//Do another run from start.
 		i = 0;
 		for (; i < CORES_PER_SOCKET; i++) {
+			cacheline_count++;
 			if (i == server_ptr->cur_client_cpu_id_on_socket)
 				continue;
 			next_request =
@@ -459,6 +481,11 @@ ffwd_delegate_finish(struct qspinlock *lock)
 			}
 		}
 	}	
+
+#if FFWD_STATS
+		this_cpu_add(ffwd_waiter_cacheline_count_total, cacheline_count);
+		this_cpu_inc(ffwd_waiter_cacheline_count);
+#endif
 
 	server_ptr->prev_client_cpu_id = server_ptr->cur_client_cpu_id;
 
@@ -489,6 +516,8 @@ ffwd_delegate_finish(struct qspinlock *lock)
 	// LOCK_START_TIMING_PER_CPU(delegation_loop);
 
 	outgoing_rsp_ptr = &(request->main_stack_ptr);
+
+	LOCK_END_TIMING_PER_CPU(ffwd_combiner_loop_unlockfn);
 
 #if DEBUG_DELEGATION
 	BUG_ON(*(char *)incoming_rsp_ptr == 0);
@@ -527,7 +556,7 @@ void ffwd_delegate_init(struct qspinlock *lock)
 		ptr->toggle = false;
 
 #if LOCK_MEASURE_TIME
-		*per_cpu_ptr(&combiner_loop, i) = UINT64_MAX;
+		*per_cpu_ptr(&ffwd_combiner_loop, i) = UINT64_MAX;
 #endif
 	}
 
@@ -618,15 +647,19 @@ void ffwd_helper_exit(void)
 void ffwd_print_stats(void)
  {
 	int i;
-	uint64_t total_counters[2] = { 0 };
+	uint64_t total_counters[4] = { 0 };
 	printk(KERN_ALERT "======== FFWD spinlock stats ========\n");
 	for_each_online_cpu (i) {
 	       total_counters[0] += per_cpu(ffwd_combiner_count, i);
 	       total_counters[1] += per_cpu(ffwd_waiters_combined, i);
+	       total_counters[2] += per_cpu(ffwd_waiter_cacheline_count_total, i);
+	       total_counters[3] += per_cpu(ffwd_waiter_cacheline_count, i);
 	}
 
        printk(KERN_ALERT "Combiner_count: %lld\n", total_counters[0]);
        printk(KERN_ALERT "waiter_combined: %lld\n", total_counters[1]);
+       printk(KERN_ALERT "Waiter_cacheline_count_total: %lld\n", total_counters[2]);
+       printk(KERN_ALERT "Waiter_cacheline_count: %lld\n", total_counters[3]);
  }
 #endif
 

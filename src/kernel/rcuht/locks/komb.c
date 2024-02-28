@@ -128,9 +128,9 @@ struct shadow_stack {
 
 #if LOCK_MEASURE_TIME
 static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop);
-/*static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_lockfn);
+//static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_lockfn);
 static DEFINE_PER_CPU_ALIGNED(uint64_t, combiner_loop_unlockfn);
-static DEFINE_PER_CPU_ALIGNED(uint64_t, lock_stack_switch);
+/*static DEFINE_PER_CPU_ALIGNED(uint64_t, lock_stack_switch);
 static DEFINE_PER_CPU_ALIGNED(uint64_t, unlock_stack_switch);*/
 #endif
 
@@ -1257,7 +1257,7 @@ komb_spin_unlock(struct qspinlock *lock)
 	void* temp_lock_addr;
 
 #if LOCK_MEASURE_TIME
-		LOCK_START_TIMING_PER_CPU_DISABLE(combiner_loop_unlockfn);
+		LOCK_START_TIMING_PER_CPU(combiner_loop_unlockfn);
 #endif
 
 	j = 0;
@@ -1363,7 +1363,7 @@ komb_spin_unlock(struct qspinlock *lock)
 #endif
 
 #if LOCK_MEASURE_TIME
-		LOCK_END_TIMING_PER_CPU_DISABLE(combiner_loop_unlockfn);
+		LOCK_END_TIMING_PER_CPU(combiner_loop_unlockfn);
 #endif
 
 
