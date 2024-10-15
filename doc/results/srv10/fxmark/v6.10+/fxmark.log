@@ -1,0 +1,268 @@
+### SYSTEM         = Linux cloudimg 6.10.0-v6.10+ #220 SMP PREEMPT_DYNAMIC Tue Oct 15 08:45:25 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
+### DISK_SIZE      = 32G
+### DURATION       = 30s
+### DIRECTIO       = bufferedio,directio
+### MEDIA_TYPES    = ssd,hdd,nvme,mem
+### FS_TYPES       = tmpfs,ext4,ext4_no_jnl,xfs,btrfs,f2fs
+### BENCH_TYPES    = DWOM,MWRM,MRPH,MRDM,DRBH
+### NCORES         = 1,2,4,7,15,23,47,62,78,94
+### CORE_SEQ       = 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95
+
+
+### MODEL_NAME     = Intel(R) Xeon(R) Platinum 8468
+### PHYSICAL_CHIPS = 2
+### CORE_PER_CHIP  = 48
+### SMT_LEVEL      = 1
+
+
+## mem:tmpfs:DWOM:94:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+94 29.999620 21239480.000000 707991.634310 30.0587 2.65 0 2808.93 77.05 0.02 0 0 0 0 0.0917384 0 97.2402 2.66734 0.000692365 0 0 0 0
+
+## mem:tmpfs:MWRM:94:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+94 31.457331 16671.000000 529.955955 31.4955 2.47 0 10.06 2980.88 23.26 0 1.11 0 0 0.0818482 0 0.333358 98.7772 0.770765 0 0.036782 0 0
+
+## mem:tmpfs:MRPH:94:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+94 29.999752 75150224.000000 2505028.207767 30.0533 47.68 0 2773.2 63.62 0.02 0 0.04 0 0 1.65294 0 96.1394 2.20554 0.000693347 0 0.00138669 0 0
+
+## mem:tmpfs:MRDM:94:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+94 29.999742 357727985.000000 11924368.902293 30.0551 13.72 0 1701.06 63.93 1099.25 0 0.19 0 0 0.476695 0 59.1025 2.22122 38.1929 0 0.00660146 0 0
+
+## mem:tmpfs:DRBH:94:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+94 29.999380 80441451.000000 2681437.097349 30.053 4.62 0 2816.03 63.5 0.06 0 0.04 0 0 0.16018 0 97.6347 2.20161 0.00208026 0 0.00138684 0 0
+
+## mem:tmpfs:DWOM:78:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+78 29.999822 29654748.000000 988497.466352 30.0586 3.35 0 2284.68 601.94 0.48 0 0.05 0 0 0.115897 0 79.041 20.8248 0.0166061 0 0.0017298 0 0
+
+## mem:tmpfs:MWRM:78:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+78 30.621209 15874.000000 518.398864 30.6554 1.43 0 7.85 2903.53 21.78 0 1.06 0 0 0.0487115 0 0.267402 98.9059 0.741914 0 0.0361078 0 0
+
+## mem:tmpfs:MRPH:78:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+78 29.999802 73351742.000000 2445074.180123 30.054 45.23 0 2295.52 544.1 0.04 0 0.09 0 0 1.56778 0 79.568 18.8597 0.00138649 0 0.00311961 0 0
+
+## mem:tmpfs:MRDM:78:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+78 29.999847 298066814.000000 9935611.155268 30.0896 16.09 0 1567.15 544.86 752.2 0 0.21 0 0 0.558582 0 54.4053 18.9154 26.1134 0 0.00729038 0 0
+
+## mem:tmpfs:DRBH:78:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+78 29.999725 72915774.000000 2430548.050940 30.0546 4.83 0 2336.06 544.16 0.05 0 0.06 0 0 0.167408 0 80.9681 18.8607 0.00173301 0 0.00207961 0 0
+
+## mem:tmpfs:DWOM:62:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+62 29.999876 24669072.000000 822305.805938 30.06 2.53 0 1777.37 1107.2 1.35 0 0.02 0 0 0.0875896 0 61.5333 38.3317 0.0467375 0 0.000692408 0 0
+
+## mem:tmpfs:MWRM:62:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+62 30.654094 15938.000000 519.930545 30.689 1.12 0 9.77 2902.69 25.88 0 1.2 0 0 0.0380867 0 0.332238 98.7088 0.880075 0 0.0408072 0 0
+
+## mem:tmpfs:MRPH:62:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+62 30.000018 76047838.000000 2534926.404200 30.0545 46.67 0 1814.14 1024.33 0.03 0 0.01 0 0 1.61758 0 62.8779 35.5032 0.0010398 0 0.000346599 0 0
+
+## mem:tmpfs:MRDM:62:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+62 30.000075 284839874.000000 9494638.643291 30.0588 11.48 0 1270.99 1024.66 568.79 0 0.18 0 0 0.399152 0 44.1914 35.6267 19.7764 0 0.00625848 0 0
+
+## mem:tmpfs:DRBH:62:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+62 29.999001 89572576.000000 2985851.931702 30.0555 5.28 0 1855.58 1024.35 0.08 0 0.02 0 0 0.182996 0 64.3113 35.5023 0.00277267 0 0.000693166 0 0
+
+## mem:tmpfs:DWOM:47:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+47 29.999940 30554380.000000 1018481.378242 30.0595 3.1 0 1402.18 1483.59 0.03 0 0.01 0 0 0.107307 0 48.5366 51.3547 0.00103845 0 0.000346151 0 0
+
+## mem:tmpfs:MWRM:47:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+47 30.426342 15948.000000 524.151075 30.5086 2.37 0 9.67 2887.97 22.22 0 1.75 0 0 0.0810539 0 0.330714 98.7685 0.759923 0 0.0598499 0 0
+
+## mem:tmpfs:MRPH:47:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+47 29.999926 55455849.000000 1848532.859714 30.0596 31.2 0 1379.4 1474.55 0 0 0.02 0 0 1.08139 0 47.81 51.1079 0 0 0.0006932 0 0
+
+## mem:tmpfs:MRDM:47:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+47 29.999950 236270391.000000 7875692.770299 30.0549 9.57 0 998.3 1473.43 397.65 0 0.19 0 0 0.332391 0 34.6735 51.176 13.8114 0 0.00659919 0 0
+
+## mem:tmpfs:DRBH:47:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+47 29.999119 110970285.000000 3699118.149134 30.054 6.07 0 1404.57 1473.3 0.06 0 0.03 0 0 0.210469 0 48.7016 51.0848 0.00208042 0 0.00104021 0 0
+
+## mem:tmpfs:DWOM:23:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+23 29.999989 31293867.000000 1043129.296087 30.0587 1.98 0 687.81 2197.28 0.04 0 0.02 0 0 0.0685802 0 23.8233 76.106 0.00138546 0 0.000692729 0 0
+
+## mem:tmpfs:MWRM:23:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+23 32.151579 17690.000000 550.206258 32.2065 0.36 0 9.65 3046.38 27.62 0 3.91 0 0 0.0116583 0 0.312508 98.6548 0.894453 0 0.126622 0 0
+
+## mem:tmpfs:MRPH:23:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+23 29.999937 82516051.000000 2750540.809469 30.0601 47.39 0 642.95 2195.2 0.02 0 0.04 0 0 1.64229 0 22.2813 76.0743 0.000693097 0 0.00138619 0 0
+
+## mem:tmpfs:MRDM:23:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+23 30.000006 132299774.000000 4409991.539929 30.0625 5.9 0 492.38 2195.44 185.12 0 0.1 0 0 0.204937 0 17.1028 76.2586 6.43014 0 0.0034735 0 0
+
+## mem:tmpfs:DRBH:23:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+23 30.000053 69913133.000000 2330433.615793 30.0642 4 0 686.29 2195.51 0.05 0 0.04 0 0 0.138605 0 23.7809 76.0774 0.00173257 0 0.00138605 0 0
+
+## mem:tmpfs:DWOM:15:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+15 30.000711 35672989.000000 1189071.468194 30.0596 1.82 0 448.41 2436.44 0.04 0 0.01 0 0 0.0630473 0 15.5335 84.4017 0.00138566 0 0.000346414 0 0
+
+## mem:tmpfs:MWRM:15:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+15 30.021974 17903.000000 596.329867 30.0801 0.45 0 11.44 2850.08 21.43 0 2.76 0 0 0.0155917 0 0.396374 98.7499 0.742509 0 0.0956288 0 0
+
+## mem:tmpfs:MRPH:15:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+15 29.999965 107274317.000000 3575814.794074 30.0603 58.3 0 391.95 2435.33 0.04 0 0.01 0 0 2.02036 0 13.5828 84.3951 0.00138618 0 0.000346545 0 0
+
+## mem:tmpfs:MRDM:15:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+15 30.000011 108081831.000000 3602726.387006 30.0679 4.88 0 310.94 2435.96 128.27 0 0.06 0 0 0.169438 0 10.7961 84.5787 4.45365 0 0.00208325 0 0
+
+## mem:tmpfs:DRBH:15:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+15 30.000160 119755603.000000 3991832.179045 30.0664 6.9 0 443.22 2435.85 0.04 0 0 0 0 0.239084 0 15.3575 84.402 0.001386 0 0 0 0
+
+## mem:tmpfs:DWOM:7:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+7 30.000056 26350172.000000 878337.427103 30.0603 1.18 0 191.48 2688.31 4.01 0 0.14 0 0 0.0408995 0 6.63681 93.1784 0.138989 0 0.00485248 0 0
+
+## mem:tmpfs:MWRM:7:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+7 30.009127 17156.000000 571.692733 30.1111 0.53 0 12.48 2851.05 23.59 0 1.83 0 0 0.0183424 0 0.431912 98.67 0.81641 0 0.0633332 0 0
+
+## mem:tmpfs:MRPH:7:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+7 29.999976 81707105.000000 2723572.371463 30.0641 46.06 0 164.1 2675.77 0.03 0 0.02 0 0 1.59599 0 5.68611 92.7162 0.00103951 0 0.000693005 0 0
+
+## mem:tmpfs:MRDM:7:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+7 30.000006 125216154.000000 4173871.024853 30.0684 5.94 0 150.32 2676.2 51.5 0 0.02 0 0 0.205965 0 5.21224 92.7954 1.78573 0 0.000693486 0 0
+
+## mem:tmpfs:DRBH:7:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+7 30.000034 86744530.000000 2891481.070090 30.0628 3.77 0 206.42 2675.48 0.04 0 0.04 0 0 0.130642 0 7.15308 92.7135 0.00138612 0 0.00138612 0 0
+
+## mem:tmpfs:DWOM:4:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+4 30.000044 27702543.000000 923416.761046 30.0614 1.24 0 118.89 2765.58 0.04 0 0 0 0 0.0429698 0 4.1199 95.8357 0.00138612 0 0 0 0
+
+## mem:tmpfs:MWRM:4:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+4 31.846104 17200.000000 540.097455 31.9158 0.27 0 12.51 3025.34 21.87 0 1.3 0 0 0.00881981 0 0.408651 98.8257 0.714405 0 0.0424658 0 0
+
+## mem:tmpfs:MRPH:4:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+4 29.999980 72989240.000000 2432976.308926 30.0624 41.8 0 78.33 2765.71 0.01 0 0.01 0 0 1.44844 0 2.71427 95.8366 0.000346517 0 0.000346517 0 0
+
+## mem:tmpfs:MRDM:4:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+4 30.000071 115474214.000000 3849131.357056 30.0642 5.46 0 87.82 2765.91 24.6 0 0.03 0 0 0.189332 0 3.04527 95.9113 0.853035 0 0.00104029 0 0
+
+## mem:tmpfs:DRBH:4:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+4 30.000053 97098160.000000 3236599.588369 30.0598 4.76 0 115.37 2765.43 0.02 0 0 0 0 0.164958 0 3.99816 95.8362 0.000693102 0 0 0 0
+
+## mem:tmpfs:DWOM:2:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+2 30.000041 48692044.000000 1623065.915143 30.059 2.04 0 58.19 2824.4 0.65 0 0.02 0 0 0.0707032 0 2.01677 97.8893 0.022528 0 0.000693169 0 0
+
+## mem:tmpfs:MWRM:2:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+2 32.065291 16227.000000 506.061219 32.1394 0.11 0 10.33 3045.65 23.8 0 0.04 0 0 0.00357151 0 0.335397 98.887 0.772745 0 0.00129873 0 0
+
+## mem:tmpfs:MRPH:2:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+2 29.999984 34501662.000000 1150056.013363 30.0614 19.79 0 40.3 2825.58 0.05 0 0 0 0 0.685791 0 1.39653 97.9159 0.00173267 0 0 0 0
+
+## mem:tmpfs:MRDM:2:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+2 30.000056 93878889.000000 3129290.458658 30.0626 4.04 0 34.5 2823.91 19.78 0 0.03 0 0 0.140168 0 1.19698 97.9755 0.686267 0 0.00104085 0 0
+
+## mem:tmpfs:DRBH:2:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+2 30.000034 64484015.000000 2149464.730607 30.0635 2.86 0 57.26 2825.72 0.06 0 0.01 0 0 0.0991022 0 1.98412 97.9143 0.00207907 0 0.000346511 0 0
+
+## mem:tmpfs:DWOM:1:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+1 30.000042 68755354.000000 2291841.924755 30.0611 2.68 0 27.41 2855.62 0.08 0 0.01 0 0 0.0928685 0 0.949823 98.9542 0.00277219 0 0.000346524 0 0
+
+## mem:tmpfs:MWRM:1:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+1 30.411535 17440.000000 573.466614 30.4886 0.07 0 6.14 2884.27 29.08 0 0.07 0 0 0.00239756 0 0.210301 98.7889 0.996017 0 0.00239756 0 0
+
+## mem:tmpfs:MRPH:1:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+1 30.000035 20724870.000000 690828.194034 30.0615 11.54 0 18.55 2855.65 0.06 0 0 0 0 0.399889 0 0.642803 98.9552 0.00207915 0 0 0 0
+
+## mem:tmpfs:MRDM:1:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+1 30.000039 75214390.000000 2507143.074047 30.063 3.35 0 17.64 2854.01 9.46 0 0.05 0 0 0.116138 0 0.611542 98.9426 0.327959 0 0.0017334 0 0
+
+## mem:tmpfs:DRBH:1:directio
+# ncpu secs works works/sec real.sec user.sec nice.sec sys.sec idle.sec iowait.sec irq.sec softirq.sec steal.sec guest.sec user.util nice.util sys.util idle.util iowait.util irq.util softirq.util steal.util guest.util
+
+1 30.000056 103753485.000000 3458443.044240 30.061 4.78 0 25.29 2855.64 0.07 0 0 0 0 0.16564 0 0.876366 98.9556 0.00242569 0 0 0 0
+
+### NUM_TEST_CONF  = 50
