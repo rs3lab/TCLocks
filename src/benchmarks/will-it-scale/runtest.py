@@ -107,4 +107,6 @@ for i in data_points:
     after = linux_stat()
     threads_idle = after.idle_fraction(before) * 100
 
+    time.sleep(5)
+
     print('%d,%d,%d,%d' % (i, threads_tot, threads_fast, threads_slow))

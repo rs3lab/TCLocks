@@ -113,10 +113,13 @@ void new_task(void *(func)(void *), void *arg)
 
 static int setaffinity(int c)
 {
-	cpu_set_t cpuset;
-	CPU_ZERO(&cpuset);
-	CPU_SET(c, &cpuset);
-	return sched_setaffinity(0, sizeof(cpuset), &cpuset);
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        if(c < 47)
+                CPU_SET(c + 1, &cpuset); // Changed for komb delegation
+        else
+                CPU_SET(c + 2, &cpuset); // Changed for komb delegation
+        return sched_setaffinity(0, sizeof(cpuset), &cpuset);
 }
 
 static int cpu_role(int cpu, int core_per_socket) {
@@ -129,16 +132,16 @@ static void *pre_trampoline(void *p)
 {
 	struct args *args = p;
 
-	if (args->total_cpu >= args->core_per_socket) {
+	//if (args->total_cpu >= args->core_per_socket) {
 		setaffinity(args->my_cpu);
 		args->role = cpu_role(args->my_cpu, args->core_per_socket);
-	}
+	/*}
 	else {
 		int cpu = (args->my_cpu == 0 || args->my_cpu < args->total_cpu / 2)?
 					args->my_cpu : (args->my_cpu - args->total_cpu / 2) + args->core_per_socket /2;
 		setaffinity(cpu);
 		args->role = cpu_role(cpu, args->core_per_socket);
-	}
+	}*/
 	return testcase_trampoline(args);
 }
 
@@ -371,6 +374,8 @@ int main(int argc, char *argv[])
 			printf("average:%llu:%llu:%llu\n", total / opt_iterations, tot_fast_ops/opt_iterations, tot_slow_ops/opt_iterations);
 			break;
 		}
+
+		fflush(stdout);
 	}
 
 	free(args);

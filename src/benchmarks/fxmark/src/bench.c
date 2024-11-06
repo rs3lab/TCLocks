@@ -36,7 +36,10 @@ static int setaffinity(int c)
 {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
-        CPU_SET(c, &cpuset);
+        if(c < 47)
+                CPU_SET(c + 1, &cpuset); // Changed for komb delegation
+        else
+                CPU_SET(c + 2, &cpuset); // Changed for komb delegation
         return sched_setaffinity(0, sizeof(cpuset), &cpuset);
 }
 
